@@ -58,6 +58,7 @@ in Databricks.
 ├── 00_setup_catalog.ipynb                 Unity Catalog initialization
 ├── 01_network_test.ipynb                  API access verification
 ├── 02_bronze_data360_first_pull.ipynb     First bronze table
+├── 04_bronze_comtrade_extract.ipynb       Comtrade fallback note
 ├── docs/
 │   └── decisions/
 │       └── ADR-001-extraction-architecture.md
