@@ -15,7 +15,7 @@ The pipeline lives in this repository and is built on Databricks Free Edition.
 - Unity Catalog set up with bronze, silver, gold, audit schemas
 - First bronze Delta table populated with World Bank GDP data
   for the six CEMAC countries, 1990 to 2024
-- Network architecture decision recorded in ADR-001
+- Hybrid extraction architecture decision recorded in ADR-001
 
 Project under active development. Status updates will follow weekly.
 
@@ -32,7 +32,11 @@ catalog (`cemac_ecowas_aes_trade`):
 | Audit  | Operational metadata, pipeline health, data quality | (week 7)                     |
 
 Five external sources will feed bronze by end of week 2: World Bank
-Data360, UN Comtrade, ACLED, IMF WEO, and the Fragile States Index.
+Data360, UN Comtrade, ACLED, IMF WEO, and the Fragile States Index. Sources
+that Databricks Free Edition serverless compute can reach directly are
+extracted in Databricks notebooks. Sources blocked by serverless DNS or
+egress restrictions use a local extraction fallback and then land raw files
+in Databricks.
 
 ## Data sources
 
@@ -48,6 +52,9 @@ Data360, UN Comtrade, ACLED, IMF WEO, and the Fragile States Index.
 
 ```text
 .
+├── extraction/                           Local fallback extractors
+│   └── extract/
+│       └── comtrade_totals.py
 ├── 00_setup_catalog.ipynb                 Unity Catalog initialization
 ├── 01_network_test.ipynb                  API access verification
 ├── 02_bronze_data360_first_pull.ipynb     First bronze table
