@@ -1,1 +1,2 @@
-requests>=2.32
+certifi>=2024.0.0
+python-dotenv>=1.0

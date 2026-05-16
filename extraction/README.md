@@ -13,6 +13,14 @@ Set a rotated UN Comtrade key in your local shell:
 export COMTRADE_API_KEY="your-rotated-key"
 ```
 
+You can also store it in a local `.env` file, which is ignored by Git:
+
+```bash
+COMTRADE_API_KEY=your-rotated-key
+```
+
+If both are present, the shell `COMTRADE_API_KEY` value wins over `.env`.
+
 Install the local extraction dependency:
 
 ```bash
@@ -23,12 +31,20 @@ Run a small extraction:
 
 ```bash
 python3 extraction/extract/comtrade_totals.py \
-  --reporter-codes 120 140 148 \
+  --all-cemac-ecowas \
   --start-year 2010 \
   --end-year 2023 \
-  --out data/raw/comtrade/cemac_totals_2010_2023.jsonl
+  --out data/raw/comtrade/cemac_ecowas_totals_2010_2023.jsonl
 ```
 
 The script writes one JSON object per reporter-year request. It sends the
 subscription key as an HTTP header and avoids printing the key or embedding
 it in logged URLs.
+
+### Troubleshooting
+
+`HTTP 401` means UN Comtrade rejected the configured key. The script now
+checks the key once before the full extraction loop and prints whether it is
+reading from `.env` or from the shell environment. Rotate or recopy the key
+from the UN Comtrade developer portal, update the reported location, then
+rerun the command.
