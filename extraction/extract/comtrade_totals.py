@@ -33,11 +33,12 @@ import urllib.parse
 import urllib.request
 
 import certifi
-from dotenv import find_dotenv, load_dotenv
+from dotenv import load_dotenv
 
+# Resolve .env from the project root (two levels above this file).
+_DOTENV_PATH = Path(__file__).parents[2] / ".env"
 _API_KEY_PRESET_IN_ENV = "COMTRADE_API_KEY" in os.environ
-_DOTENV_PATH = find_dotenv(usecwd=True)
-load_dotenv(_DOTENV_PATH or None, override=False)
+load_dotenv(_DOTENV_PATH, override=False)
 
 BASE_URL = "https://comtradeapi.un.org/data/v1/get/C/A/HS"
 _SSL_CTX = ssl.create_default_context(cafile=certifi.where())
@@ -63,7 +64,7 @@ class ComtradeRequestError(Exception):
 def api_key_source() -> str:
     if _API_KEY_PRESET_IN_ENV:
         return "the COMTRADE_API_KEY environment variable"
-    if _DOTENV_PATH:
+    if _DOTENV_PATH.exists():
         return f"the .env file at {_DOTENV_PATH}"
     return "COMTRADE_API_KEY"
 
@@ -103,23 +104,32 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Skip the one-request API key validation check before extraction.",
     )
+    parser.add_argument(
+        "--max-calls",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Stop after N successful API calls (quota guard). Rerun to resume.",
+    )
     return parser.parse_args()
 
 
-def read_api_key() -> str:
-    api_key = (os.environ.get("COMTRADE_API_KEY") or "").strip()
-    if not api_key:
+_PLACEHOLDERS = {"your-key", "your-rotated-key", "paste_your_key_here"}
+
+
+def read_api_keys() -> list[str]:
+    """Return all configured API keys (COMTRADE_API_KEY, COMTRADE_API_KEY_2, …)."""
+    keys: list[str] = []
+    for var in ("COMTRADE_API_KEY", "COMTRADE_API_KEY_2", "COMTRADE_API_KEY_3"):
+        val = (os.environ.get(var) or "").strip()
+        if val and val.lower() not in _PLACEHOLDERS:
+            keys.append(val)
+    if not keys:
         raise ComtradeAuthError(
-            "COMTRADE_API_KEY is not set. Set it from your rotated UN Comtrade "
-            "subscription key before running the extractor."
+            "No valid COMTRADE_API_KEY found. Set it in .env from the UN Comtrade "
+            "developer portal before running the extractor."
         )
-    if api_key.lower() in {"your-key", "your-rotated-key", "paste_your_key_here"}:
-        raise ComtradeAuthError(
-            f"{api_key_source()} still contains a placeholder value. Replace it "
-            "with the rotated UN Comtrade subscription key from your password "
-            "manager."
-        )
-    return api_key
+    return keys
 
 
 def build_request(
@@ -130,6 +140,8 @@ def build_request(
     qs = urllib.parse.urlencode({
         "reporterCode": reporter_code,
         "period": str(year),
+        # Request every partner row for this reporter-year.
+        # The Databricks notebook filters partnerCode == 0 (World aggregate).
         "partnerCode": "all",
         "cmdCode": "TOTAL",
         "flowCode": "M,X",
@@ -153,19 +165,48 @@ def read_comtrade_json(req: urllib.request.Request) -> dict:
         return json.loads(response.read())
 
 
+def _parse_retry_after(exc: urllib.error.HTTPError) -> str:
+    """Return a human-readable wait hint from the Retry-After header, if present."""
+    retry_after = exc.headers.get("Retry-After", "")
+    if retry_after.isdigit():
+        secs = int(retry_after)
+        h, m = divmod(secs // 60, 60)
+        return f" Quota resets in {h}h {m}m (Retry-After: {retry_after}s)."
+    return ""
+
+
+def _check_quota_exceeded(exc: urllib.error.HTTPError) -> bool:
+    """Return True if the 403 body indicates a quota / volume limit error."""
+    try:
+        body = exc.read().decode("utf-8", errors="replace").lower()
+        return "quota" in body or "call volume" in body or "rate limit" in body
+    except Exception:
+        return False
+
+
 def validate_api_key(api_key: str) -> None:
     """Validate the subscription key once before the full extraction loop."""
     req = build_request(api_key=api_key, reporter_code="120", year=2010)
     try:
         read_comtrade_json(req)
     except urllib.error.HTTPError as exc:
-        if exc.code in {401, 403}:
+        if exc.code == 401:
             raise ComtradeAuthError(
-                f"UN Comtrade rejected COMTRADE_API_KEY with HTTP {exc.code}. "
+                f"UN Comtrade rejected COMTRADE_API_KEY with HTTP 401 (Unauthorized). "
                 f"The script is reading the key from {api_key_source()}. "
-                "The key is missing, invalid, inactive, expired, or not "
-                "subscribed to the API product. Rotate or copy the key again "
-                "from the UN Comtrade developer portal, then rerun the command."
+                "The key is missing, invalid, or not subscribed to the comtrade-v1 "
+                "product on comtradedeveloper.un.org."
+            ) from exc
+        if exc.code == 403:
+            if _check_quota_exceeded(exc):
+                raise ComtradeRequestError(
+                    f"UN Comtrade daily call quota is exhausted (HTTP 403).{_parse_retry_after(exc)} "
+                    "Wait for the quota to reset, then rerun."
+                ) from exc
+            raise ComtradeAuthError(
+                f"UN Comtrade rejected COMTRADE_API_KEY with HTTP 403 (Forbidden). "
+                f"The script is reading the key from {api_key_source()}. "
+                "Check that the key is subscribed to the comtrade-v1 product."
             ) from exc
         raise ComtradeRequestError(
             f"UN Comtrade API key check failed with HTTP {exc.code}."
@@ -205,9 +246,19 @@ def fetch_comtrade(
                 "payload": observations,
             }
         except urllib.error.HTTPError as exc:
-            if exc.code in {401, 403}:
+            if exc.code == 401:
                 raise ComtradeAuthError(
-                    f"UN Comtrade rejected COMTRADE_API_KEY with HTTP {exc.code}. "
+                    f"UN Comtrade rejected COMTRADE_API_KEY with HTTP 401 (Unauthorized). "
+                    f"The script is reading the key from {api_key_source()}."
+                ) from exc
+            if exc.code == 403:
+                if _check_quota_exceeded(exc):
+                    raise ComtradeRequestError(
+                        f"UN Comtrade daily call quota is exhausted (HTTP 403).{_parse_retry_after(exc)} "
+                        "Wait for the quota to reset, then rerun."
+                    ) from exc
+                raise ComtradeAuthError(
+                    f"UN Comtrade rejected COMTRADE_API_KEY with HTTP 403 (Forbidden). "
                     f"The script is reading the key from {api_key_source()}."
                 ) from exc
             if exc.code == 429:
@@ -236,57 +287,117 @@ def main() -> int:
     reporter_codes = _ALL_CEMAC_ECOWAS if args.all_cemac_ecowas else args.reporter_codes
 
     try:
-        api_key = read_api_key()
-        if not args.skip_auth_check:
-            validate_api_key(api_key)
+        api_keys = read_api_keys()
     except ComtradeAuthError as exc:
         print(str(exc), file=sys.stderr)
         return 2
-    except ComtradeRequestError as exc:
-        print(str(exc), file=sys.stderr)
-        return 1
+
+    api_key = api_keys[0]
+    key_index = 0
+    print(f"Using key {key_index + 1}/{len(api_keys)}")
+
+    if not args.skip_auth_check:
+        try:
+            validate_api_key(api_key)
+        except ComtradeAuthError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        except ComtradeRequestError as exc:
+            # quota on key 1 — try next key
+            if len(api_keys) > 1:
+                key_index = 1
+                api_key = api_keys[key_index]
+                print(f"Key 1 quota exhausted. Switching to key {key_index + 1}/{len(api_keys)}")
+                try:
+                    validate_api_key(api_key)
+                except (ComtradeAuthError, ComtradeRequestError) as exc2:
+                    print(str(exc2), file=sys.stderr)
+                    return 1
+            else:
+                print(str(exc), file=sys.stderr)
+                return 1
 
     output_path = Path(args.out)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    total_requests = len(reporter_codes) * (args.end_year - args.start_year + 1)
-    completed = 0
+    # --- Resume: find (reporter_code, year) pairs already written ---
+    done: set[tuple[str, int]] = set()
+    if output_path.exists():
+        with output_path.open(encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                    done.add((str(rec["reporter_code"]), int(rec["period"])))
+                except (json.JSONDecodeError, KeyError):
+                    pass
+        if done:
+            print(f"Resuming: {len(done)} pair(s) already in {output_path}, skipping them.")
+
+    all_pairs = [
+        (rc, yr)
+        for rc in reporter_codes
+        for yr in range(args.start_year, args.end_year + 1)
+        if (rc, yr) not in done
+    ]
+    total_remaining = len(all_pairs)
+    total_overall = len(reporter_codes) * (args.end_year - args.start_year + 1)
+    calls_this_run = 0
     request_failures = 0
     empty_responses = 0
 
-    with output_path.open("w", encoding="utf-8") as out:
-        for reporter_code in reporter_codes:
-            for year in range(args.start_year, args.end_year + 1):
-                completed += 1
-                try:
-                    record = fetch_comtrade(api_key, reporter_code, year)
-                except ComtradeAuthError as exc:
-                    print(str(exc), file=sys.stderr)
-                    return 2
-                except ComtradeRequestError as exc:
+    with output_path.open("a", encoding="utf-8") as out:
+        for idx, (reporter_code, year) in enumerate(all_pairs, start=1):
+            if args.max_calls is not None and calls_this_run >= args.max_calls:
+                print(
+                    f"\n--max-calls {args.max_calls} reached after {calls_this_run} call(s). "
+                    f"{total_remaining - idx + 1} pair(s) remaining. Rerun to resume."
+                )
+                break
+
+            try:
+                record = fetch_comtrade(api_key, reporter_code, year)
+            except ComtradeAuthError as exc:
+                print(str(exc), file=sys.stderr)
+                return 2
+            except ComtradeRequestError as exc:
+                # If quota exhausted, rotate to next key
+                if "quota" in str(exc).lower() and key_index + 1 < len(api_keys):
+                    key_index += 1
+                    api_key = api_keys[key_index]
+                    print(f"\nKey quota exhausted. Switching to key {key_index + 1}/{len(api_keys)}")
+                    try:
+                        record = fetch_comtrade(api_key, reporter_code, year)
+                    except (ComtradeAuthError, ComtradeRequestError) as exc2:
+                        request_failures += 1
+                        print(str(exc2), file=sys.stderr)
+                        continue
+                else:
                     request_failures += 1
                     print(str(exc), file=sys.stderr)
                     continue
 
-                n_obs = len(record["payload"])
-                out.write(json.dumps(record, ensure_ascii=False) + "\n")
-                out.flush()
-                if n_obs == 0:
-                    empty_responses += 1
-                    status = "empty"
-                else:
-                    status = "ok"
-                print(
-                    f"{completed}/{total_requests} {status} "
-                    f"reporter={reporter_code} year={year} obs={n_obs}"
-                )
-                time.sleep(args.sleep_seconds)
+            calls_this_run += 1
+            n_obs = len(record["payload"])
+            out.write(json.dumps(record, ensure_ascii=False) + "\n")
+            out.flush()
+            status = "empty" if n_obs == 0 else "ok"
+            if n_obs == 0:
+                empty_responses += 1
+            already = len(done)
+            print(
+                f"{already + idx}/{total_overall} {status} "
+                f"reporter={reporter_code} year={year} obs={n_obs}"
+            )
+            time.sleep(args.sleep_seconds)
 
-    print(f"\nWrote {output_path}")
-    print(f"Empty successful responses: {empty_responses}")
+    print(f"\nWrote {output_path} ({len(done) + calls_this_run}/{total_overall} pairs total)")
+    print(f"Empty successful responses this run: {empty_responses}")
     if request_failures:
         print(
-            f"Completed with {request_failures} failed request(s) out of {total_requests}.",
+            f"Completed with {request_failures} failed request(s).",
             file=sys.stderr,
         )
         return 1

@@ -39,7 +39,10 @@ python3 extraction/extract/comtrade_totals.py \
 
 The script writes one JSON object per reporter-year request. It sends the
 subscription key as an HTTP header and avoids printing the key or embedding
-it in logged URLs.
+it in logged URLs. Each request uses `partnerCode=all`, so the payload
+contains all available bilateral partner rows for that reporter-year. The
+Databricks bronze notebook removes `partnerCode = 0` World aggregate rows
+before writing `bronze.comtrade_raw`.
 
 ### Troubleshooting
 
