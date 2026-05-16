@@ -1,15 +1,15 @@
-# ADR-001: Hybrid extraction architecture
+# ADR-001: Source-aware extraction architecture
 
 ## Status
 
 Accepted, May 2026. Amended on May 16, 2026 after UN Comtrade network
-validation.
+validation and the IMF IMTS source substitution.
 
 ## Context
 
 The CEMAC–ECOWAS–AES Trade Observatory ingests data from five external
-APIs and file sources: World Bank Data360, UN Comtrade, ACLED, IMF WEO,
-and Fragile States Index. Each source requires HTTP requests from
+APIs and file sources: World Bank Data360, IMF IMTS, ACLED, IMF WEO, and
+Fragile States Index. Each source requires HTTP requests from
 somewhere with outbound internet access.
 
 Databricks Free Edition restricts outbound network access from serverless
@@ -23,9 +23,12 @@ The original Week 1 network test confirmed that World Bank direct
 extraction works from Databricks. A later UN Comtrade test showed that
 `comtradeapi.un.org` fails DNS resolution from Databricks serverless
 compute, while the same hostname resolves and responds from the local Mac.
+The attempted local fallback also introduced API key and quota friction
+that was unnecessary for the current requirement of annual total bilateral
+trade by partner.
 
-This means extraction architecture must be decided per source, not once
-globally for the whole project.
+This means extraction architecture and source choice must be decided per
+source, not once globally for the whole project.
 
 ## Options considered
 
@@ -36,9 +39,8 @@ calls the API directly with `requests.get(...)`, parses the response, and
 writes to a Delta table. Orchestrated by Lakeflow Jobs. Credentials live
 in Databricks secrets.
 
-This is the simplest path when serverless network access works, but it is
-not viable for UN Comtrade because Databricks currently cannot resolve
-`comtradeapi.un.org`.
+This is the simplest path when serverless network access works. It is the
+preferred option for public sources that Databricks can reach directly.
 
 ### Option B — Local extraction only
 
@@ -63,7 +65,8 @@ in logs, or committed to Git.
 
 ## Decision
 
-**Option C — Hybrid extraction by source.**
+**Option C — Hybrid extraction by source, with source substitution when a
+candidate source is operationally unsuitable for the current requirement.**
 
 World Bank remains a direct Databricks extraction. The supporting test ran
 on May 15, 2026 using `01_network_test.ipynb`. It called the World Bank
@@ -71,34 +74,35 @@ Open Data API (`api.worldbank.org`) from a Databricks Free Edition
 serverless notebook and received an HTTP 200 response containing valid
 Cameroon GDP data: 2020 GDP of 40,773,241,177 USD.
 
-UN Comtrade uses the local fallback path. A Databricks serverless test on
-May 16, 2026 failed before authentication with DNS resolution errors for
-`comtradeapi.un.org`. A local Mac network check resolved the hostname and
-received an HTTP response from the endpoint, confirming that the API
-hostname exists and the failure is specific to Databricks serverless
-network access.
+UN Comtrade is not part of the active Week 2 path. A Databricks serverless
+test on May 16, 2026 failed before authentication with DNS resolution
+errors for `comtradeapi.un.org`. A local Mac network check resolved the
+hostname and received an HTTP response from the endpoint, confirming that
+the API hostname exists and the failure is specific to Databricks
+serverless network access. The attempted local fallback then hit key and
+quota friction.
 
-The first fallback extractor is `extraction/extract/comtrade_totals.py`.
-It reads `COMTRADE_API_KEY` from the local environment and sends the key
-as an HTTP header rather than as a query parameter.
+For annual bilateral total trade, IMF IMTS replaces UN Comtrade. IMF IMTS
+is extracted directly in `04_bronze_imts_extract.ipynb` and writes
+`bronze.bilateral_trade_raw`. The source-specific trade decision is
+recorded in ADR-002.
 
 ## Consequences
 
 **Positive:**
 - Working direct extractions stay simple and keep Databricks lineage.
-- Blocked sources are no longer blocked by Databricks serverless DNS or
-  egress policy.
+- Blocked sources do not block the whole project; they can either use a
+  fallback path or be replaced by a source that satisfies the same
+  requirement with lower operational risk.
 - The project can continue in Week 2 without waiting for a platform-level
   network change.
 - API keys can be kept out of URLs and error logs.
 
 **Negative / risks:**
-- The pipeline now has two extraction surfaces: Databricks notebooks and
-  local Python extractors.
-- Local fallback jobs require a local runtime, local credentials, and an
-  upload step into Databricks.
-- Operational monitoring must check both direct notebook runs and local
-  fallback runs.
+- Some analytical scope may change when a source is replaced. IMF IMTS
+  covers total bilateral goods trade, but not HS product-level detail.
+- If a future source truly requires a local fallback, that path will add a
+  second extraction surface with local runtime and upload steps.
 
 **Reversibility:**
 - If Databricks later allows access to a blocked source, that source can
@@ -114,5 +118,5 @@ The World Bank test result is preserved as cell output in
 The UN Comtrade failure mode was observed as repeated
 `NameResolutionError` failures for `comtradeapi.un.org` from Databricks
 serverless compute. The same hostname resolved from the local Mac and the
-API returned an HTTP response, so the source-specific fallback is
-required.
+API returned an HTTP response. The active replacement is IMF IMTS for total
+bilateral trade.

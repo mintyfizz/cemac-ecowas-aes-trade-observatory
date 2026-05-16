@@ -15,7 +15,7 @@ The pipeline lives in this repository and is built on Databricks Free Edition.
 - Unity Catalog set up with bronze, silver, gold, audit schemas
 - First bronze Delta table populated with World Bank GDP data
   for the six CEMAC countries, 1990 to 2024
-- Hybrid extraction architecture decision recorded in ADR-001
+- IMF IMTS bilateral trade extraction notebook added for all partners
 
 Project under active development. Status updates will follow weekly.
 
@@ -26,24 +26,24 @@ catalog (`cemac_ecowas_aes_trade`):
 
 | Tier   | Role                                                | Tables so far                |
 | ------ | --------------------------------------------------- | ---------------------------- |
-| Bronze | Raw API responses, append-only, replayable          | `bronze.data360_raw`         |
+| Bronze | Raw API responses, append-only, replayable          | `bronze.data360_raw`, `bronze.bilateral_trade_raw` |
 | Silver | Reconciled, typed, time-aware facts and dimensions  | (week 3-4)                   |
 | Gold   | Pre-aggregated marts, one per dashboard panel       | (week 6-7)                   |
 | Audit  | Operational metadata, pipeline health, data quality | (week 7)                     |
 
 Five external sources will feed bronze by end of week 2: World Bank
-Data360, UN Comtrade, ACLED, IMF WEO, and the Fragile States Index. Sources
+Data360, IMF IMTS, ACLED, IMF WEO, and the Fragile States Index. Sources
 that Databricks Free Edition serverless compute can reach directly are
 extracted in Databricks notebooks. Sources blocked by serverless DNS or
-egress restrictions use a local extraction fallback and then land raw files
-in Databricks.
+egress restrictions can use a local extraction fallback and then land raw
+files in Databricks.
 
 ## Data sources
 
 | Source               | What it provides                              | Access     |
 | -------------------- | --------------------------------------------- | ---------- |
 | World Bank Data360   | Macroeconomic indicators, bilateral trade     | Public     |
-| UN Comtrade          | Product-level trade at HS classification      | Free key   |
+| IMF IMTS             | Annual goods exports/imports by partner       | Public API |
 | ACLED                | Conflict events, country-week and event-level | Research   |
 | IMF WEO              | Debt-to-GDP and fiscal context                | Public CSV |
 | Fragile States Index | Composite institutional fragility scores      | Public CSV |
@@ -52,16 +52,14 @@ in Databricks.
 
 ```text
 .
-├── extraction/                           Local fallback extractors
-│   └── extract/
-│       └── comtrade_totals.py
 ├── 00_setup_catalog.ipynb                 Unity Catalog initialization
 ├── 01_network_test.ipynb                  API access verification
 ├── 02_bronze_data360_first_pull.ipynb     First bronze table
-├── 04_bronze_comtrade_extract.ipynb       Comtrade fallback note
+├── 04_bronze_imts_extract.ipynb           IMF IMTS bilateral trade totals
 ├── docs/
 │   └── decisions/
-│       └── ADR-001-extraction-architecture.md
+│       ├── ADR-001-extraction-architecture.md
+│       └── ADR-002-bilateral-trade-source.md
 └── README.md
 ```
 
