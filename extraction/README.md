@@ -25,9 +25,16 @@ python3 extraction/extract/acled_extract.py \
   --out data/raw/acled/cemac_ecowas_acled_2010_2026.jsonl
 ```
 
-The script reads `ACLED_USERNAME` and `ACLED_PASSWORD` from the local
-environment or `.env`. If either is missing, it prompts interactively so the
-password does not go into shell history.
+The script first checks `ACLED_ACCESS_TOKEN` in the local environment or
+`.env`. If no token is present, it reads `ACLED_USERNAME` and
+`ACLED_PASSWORD`. If either username/password value is missing, it prompts
+interactively so the password does not go into shell history.
+
+If password OAuth returns HTTP 403, confirm the account can log in at
+`https://acleddata.com`, that the account is activated, and that it has API
+access. You can also generate an access token manually with ACLED's OAuth
+request and store it in `.env` as `ACLED_ACCESS_TOKEN=...`; `.env` is ignored
+by Git.
 
 Upload the JSONL to Databricks:
 

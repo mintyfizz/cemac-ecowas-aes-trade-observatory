@@ -5,9 +5,9 @@ Databricks Free Edition serverless can fail DNS resolution for
 acleddata.com. This script runs from the local Mac, writes JSONL envelopes,
 and the Databricks notebook reads those files from a Volume.
 
-Credentials are read from ACLED_USERNAME / ACLED_PASSWORD, from a local .env
-file, or prompted interactively. Do not pass the password as a command-line
-argument.
+Credentials are read from ACLED_ACCESS_TOKEN, or from ACLED_USERNAME /
+ACLED_PASSWORD, or prompted interactively. Do not pass the password as a
+command-line argument.
 
 Typical usage:
 
@@ -138,6 +138,12 @@ def credentials() -> tuple[str, str]:
     return username, password
 
 
+def env_access_token() -> str | None:
+    load_dotenv()
+    token = os.environ.get("ACLED_ACCESS_TOKEN", "").strip()
+    return token or None
+
+
 def request_json(
     url: str,
     *,
@@ -149,6 +155,17 @@ def request_json(
     req = urllib.request.Request(url, data=data, headers=headers or {}, method=method)
     with urllib.request.urlopen(req, timeout=timeout, context=SSL_CTX) as response:
         return json.loads(response.read())
+
+
+def http_error_preview(exc: urllib.error.HTTPError) -> str:
+    """Read a short, sanitized HTTP error body for diagnostics."""
+    try:
+        body = exc.read().decode("utf-8", errors="replace").strip()
+    except Exception:
+        body = ""
+    if not body:
+        return ""
+    return body[:600].replace("\n", " ")
 
 
 def get_access_token(username: str, password: str) -> str:
@@ -163,13 +180,20 @@ def get_access_token(username: str, password: str) -> str:
         payload = request_json(
             TOKEN_URL,
             method="POST",
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/x-www-form-urlencoded",
+                "User-Agent": "cemac-ecowas-aes-trade-observatory/0.1",
+            },
             data=body,
             timeout=60,
         )
     except urllib.error.HTTPError as exc:
+        preview = http_error_preview(exc)
+        detail = f" Response body: {preview}" if preview else ""
         raise AcledRequestError(
-            f"ACLED OAuth failed with HTTP {exc.code}. Check your email/password."
+            f"ACLED OAuth failed with HTTP {exc.code}. Check your email/password, "
+            f"account activation, and ACLED API permission.{detail}"
         ) from exc
     return str(payload["access_token"])
 
@@ -257,9 +281,13 @@ def selected_countries(args: argparse.Namespace) -> list[dict[str, str]]:
 def main() -> int:
     args = parse_args()
     countries = selected_countries(args)
-    username, password = credentials()
-    token = get_access_token(username, password)
-    print("ACLED OAuth token acquired.")
+    token = env_access_token()
+    if token:
+        print("Using ACLED_ACCESS_TOKEN from environment/.env.")
+    else:
+        username, password = credentials()
+        token = get_access_token(username, password)
+        print("ACLED OAuth token acquired.")
 
     output_path = Path(args.out)
     output_path.parent.mkdir(parents=True, exist_ok=True)
