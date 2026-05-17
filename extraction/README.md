@@ -73,3 +73,31 @@ databricks fs cp data/raw/weo/cemac_ecowas_weo_1990_2024.jsonl \
 
 Then run `06_bronze_imf_weo_extract.ipynb` in Databricks. It writes
 `bronze.imf_weo_raw`.
+
+## Fragile States Index
+
+Fragile States Index scores are extracted from the official annual Excel
+downloads published by the Fund for Peace. The official download page
+currently exposes 2006-2023 files; wider requested ranges are allowed, but
+only available official years are written.
+
+Run locally from the repository root:
+
+```bash
+python3 extraction/extract/fsi_extract.py \
+  --all-cemac-ecowas \
+  --start-year 1990 --end-year 2024 \
+  --out data/raw/fsi/cemac_ecowas_fsi_1990_2024.jsonl
+```
+
+Upload the JSONL to Databricks:
+
+```bash
+databricks fs mkdirs dbfs:/Volumes/cemac_ecowas_aes_trade/bronze/raw_landing/fsi -p cemac-project
+databricks fs cp data/raw/fsi/cemac_ecowas_fsi_1990_2024.jsonl \
+  dbfs:/Volumes/cemac_ecowas_aes_trade/bronze/raw_landing/fsi/cemac_ecowas_fsi_1990_2024.jsonl \
+  --overwrite -p cemac-project
+```
+
+Then run `07_bronze_fsi_extract.ipynb` in Databricks. It writes
+`bronze.fsi_raw`.
