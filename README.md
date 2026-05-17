@@ -17,6 +17,7 @@ The pipeline lives in this repository and is built on Databricks Free Edition.
   for the six CEMAC countries, 1990 to 2024
 - IMF IMTS bilateral trade extraction notebook added for all partners
 - ACLED event and weekly aggregate extraction notebook added
+- IMF WEO fiscal and macro context extraction added
 
 Project under active development. Status updates will follow weekly.
 
@@ -27,7 +28,7 @@ catalog (`cemac_ecowas_aes_trade`):
 
 | Tier   | Role                                                | Tables so far                |
 | ------ | --------------------------------------------------- | ---------------------------- |
-| Bronze | Raw API responses, append-only, replayable          | `bronze.data360_raw`, `bronze.bilateral_trade_raw`, `bronze.acled_events_historical`, `bronze.acled_weekly_aggregated` |
+| Bronze | Raw API responses, append-only, replayable          | `bronze.data360_raw`, `bronze.bilateral_trade_raw`, `bronze.acled_events_historical`, `bronze.acled_weekly_aggregated`, `bronze.imf_weo_raw` |
 | Silver | Reconciled, typed, time-aware facts and dimensions  | (week 3-4)                   |
 | Gold   | Pre-aggregated marts, one per dashboard panel       | (week 6-7)                   |
 | Audit  | Operational metadata, pipeline health, data quality | (week 7)                     |
@@ -58,6 +59,7 @@ files in Databricks.
 ├── 02_bronze_data360_first_pull.ipynb     First bronze table
 ├── 04_bronze_imts_extract.ipynb           IMF IMTS bilateral trade totals
 ├── 05_bronze_acled_extract.ipynb          ACLED events and weekly aggregates
+├── 06_bronze_imf_weo_extract.ipynb        IMF WEO fiscal and macro context
 ├── docs/
 │   └── decisions/
 │       ├── ADR-001-extraction-architecture.md

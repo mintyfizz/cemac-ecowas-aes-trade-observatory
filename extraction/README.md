@@ -47,3 +47,29 @@ databricks fs cp data/raw/acled/cemac_ecowas_acled_2010_2026.jsonl \
 
 Then run `05_bronze_acled_extract.ipynb` in Databricks. It writes
 `bronze.acled_events_historical` and `bronze.acled_weekly_aggregated`.
+
+## IMF WEO
+
+IMF World Economic Outlook fiscal and macro context is extracted locally
+from the IMF SDMX API, then uploaded to Databricks for bronze ingestion.
+
+Run locally from the repository root:
+
+```bash
+python3 extraction/extract/imf_weo_extract.py \
+  --all-cemac-ecowas \
+  --start-year 1990 --end-year 2024 \
+  --out data/raw/weo/cemac_ecowas_weo_1990_2024.jsonl
+```
+
+Upload the JSONL to Databricks:
+
+```bash
+databricks fs mkdirs dbfs:/Volumes/cemac_ecowas_aes_trade/bronze/raw_landing/weo -p cemac-project
+databricks fs cp data/raw/weo/cemac_ecowas_weo_1990_2024.jsonl \
+  dbfs:/Volumes/cemac_ecowas_aes_trade/bronze/raw_landing/weo/cemac_ecowas_weo_1990_2024.jsonl \
+  --overwrite -p cemac-project
+```
+
+Then run `06_bronze_imf_weo_extract.ipynb` in Databricks. It writes
+`bronze.imf_weo_raw`.
