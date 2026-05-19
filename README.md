@@ -4,7 +4,7 @@ A Databricks lakehouse platform tracking trade flows, partner dependencies,
 and structural economic vulnerability across CEMAC, ECOWAS, and the
 Alliance of Sahel States (AES). Covers 21 countries from 1990 to today.
 
-A public Streamlit dashboard (link coming) will surface the findings.
+A public interactive web dashboard (link coming) will surface the findings.
 The pipeline lives in this repository and is built on Databricks Free Edition.
 
 ## Status
@@ -62,6 +62,9 @@ files in Databricks.
 ├── 05_bronze_acled_extract.ipynb          ACLED events and weekly aggregates
 ├── 06_bronze_imf_weo_extract.ipynb        IMF WEO fiscal and macro context
 ├── 07_bronze_fsi_extract.ipynb            Fragile States Index scores
+├── api/                                   FastAPI backend for web hosting
+├── public/                                Interactive dashboard frontend
+├── app/                                   Streamlit local analysis dashboard
 ├── docs/
 │   └── decisions/
 │       ├── ADR-001-extraction-architecture.md

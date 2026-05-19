@@ -3,3 +3,8 @@ data/raw/
 .env
 .venv/
 __pycache__/
+.streamlit/secrets.toml
+app/.streamlit/secrets.toml
+
+.databricks
+.vercel

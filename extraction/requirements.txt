@@ -1,0 +1,3 @@
+certifi>=2024.0.0
+python-dotenv>=1.0
+sdmx1>=2.16.0       # IMF IMTS API client (replaces retired dataservices.imf.org)

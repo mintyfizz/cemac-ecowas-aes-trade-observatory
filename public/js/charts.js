@@ -1,0 +1,605 @@
+/**
+ * Chart and map renderers for the CEMAC-ECOWAS-AES dashboard.
+ * The visual model follows the supplied HTML prototype: D3 map + Chart.js.
+ */
+
+"use strict";
+
+const COLORS = {
+  CEMAC: "#0f6e56",
+  ECOWAS: "#185fa5",
+  AES: "#ba7517",
+  exports: "#1d9e75",
+  imports: "#7f77dd",
+  text: "#f4f1e8",
+  muted: "#aaa59a",
+  grid: "#44453f",
+  surface: "#2f302d",
+  danger: "#ef7668",
+  warning: "#f7d25d",
+  purple: "#7f77dd",
+  teal: ["#0b3327", "#0f4f40", "#116d57", "#16896f", "#1da986"],
+};
+
+const COUNTRY_NUMERIC_TO_ISO = {
+  "120": "CMR", "140": "CAF", "148": "TCD", "178": "COG", "226": "GNQ", "266": "GAB",
+  "204": "BEN", "854": "BFA", "132": "CPV", "384": "CIV", "270": "GMB", "288": "GHA",
+  "324": "GIN", "624": "GNB", "430": "LBR", "466": "MLI", "562": "NER", "566": "NGA",
+  "686": "SEN", "694": "SLE", "768": "TGO",
+};
+
+const NEIGHBOR_NUMERIC = new Set(["478", "012", "12", "434", "729", "728", "180", "024", "24", "678", "504", "732"]);
+
+const chartStore = {};
+let worldPromise = null;
+
+if (window.Chart) {
+  Chart.defaults.color = COLORS.text;
+  Chart.defaults.font.family = 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif';
+  Chart.defaults.font.size = 11;
+  Chart.defaults.borderColor = COLORS.grid;
+}
+
+function destroyChart(id) {
+  if (chartStore[id]) {
+    chartStore[id].destroy();
+    delete chartStore[id];
+  }
+}
+
+function canvas(id) {
+  const el = document.getElementById(id);
+  if (!el) return null;
+  destroyChart(id);
+  return el;
+}
+
+function lineOptions(title, yTitle, extra = {}) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: "index", intersect: false },
+    plugins: {
+      legend: { position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 3 } },
+      title: { display: !!title, text: title, color: COLORS.text, font: { size: 12, weight: "500" } },
+      tooltip: { backgroundColor: "#11120f", borderColor: "#55564f", borderWidth: 1 },
+    },
+    scales: {
+      x: { grid: { color: COLORS.grid }, ticks: { color: COLORS.text, maxRotation: 0 } },
+      y: { grid: { color: COLORS.grid }, ticks: { color: COLORS.text }, title: { display: !!yTitle, text: yTitle, color: COLORS.text } },
+    },
+    ...extra,
+  };
+}
+
+function barOptions(title, xTitle, extra = {}) {
+  return lineOptions(title, xTitle, {
+    indexAxis: "y",
+    scales: {
+      x: { grid: { color: COLORS.grid }, ticks: { color: COLORS.text }, title: { display: !!xTitle, text: xTitle, color: COLORS.text } },
+      y: { grid: { color: "rgba(0,0,0,0)" }, ticks: { color: COLORS.text } },
+    },
+    ...extra,
+  });
+}
+
+function emptyHTML(id, msg) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = `<div class="empty-state">${escapeHTML(msg)}</div>`;
+}
+
+function chartEmpty(id, msg) {
+  destroyChart(id);
+  const el = document.getElementById(id);
+  if (!el) return;
+  const parent = el.parentElement;
+  if (parent) parent.insertAdjacentHTML("beforeend", `<div class="empty-state">${escapeHTML(msg)}</div>`);
+}
+
+function escapeHTML(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function shortMoneyB(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "--";
+  if (Math.abs(n) >= 1000) return `$${(n / 1000).toFixed(1)}T`;
+  if (Math.abs(n) >= 100) return `$${n.toFixed(0)}B`;
+  if (Math.abs(n) >= 10) return `$${n.toFixed(1)}B`;
+  return `$${n.toFixed(2)}B`;
+}
+
+function fmtPct(value, digits = 1) {
+  const n = Number(value);
+  return Number.isFinite(n) ? `${n.toFixed(digits)}%` : "--";
+}
+
+function fmtPlain(value, digits = 1) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n.toFixed(digits) : "--";
+}
+
+function metricValue(row, metric) {
+  if (!row) return null;
+  return row.value == null ? null : Number(row.value);
+}
+
+function blocColor(bloc) {
+  return COLORS[bloc] || COLORS.muted;
+}
+
+function loadWorld() {
+  if (!worldPromise) {
+    worldPromise = d3
+      .json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json")
+      .then(world => topojson.feature(world, world.objects.countries).features);
+  }
+  return worldPromise;
+}
+
+async function renderMap(rows, state, metricMeta) {
+  const svg = d3.select("#map-svg");
+  const tooltip = d3.select("#map-tooltip");
+  svg.selectAll("*").remove();
+
+  if (!rows || !rows.length) {
+    svg.append("text")
+      .attr("x", 260)
+      .attr("y", 210)
+      .attr("fill", COLORS.muted)
+      .attr("text-anchor", "middle")
+      .text("No map data");
+    return;
+  }
+
+  const world = await loadWorld();
+  const rowByIso = new Map(rows.map(row => [row.country_iso3, row]));
+  const targetIds = new Set(Object.keys(COUNTRY_NUMERIC_TO_ISO));
+
+  const projectFeatures = world.filter(f => targetIds.has(String(f.id)));
+  const neighborFeatures = world.filter(f => NEIGHBOR_NUMERIC.has(String(f.id)));
+  const cpvPoint = {
+    type: "Feature",
+    id: "132-point",
+    properties: { iso: "CPV" },
+    geometry: { type: "Point", coordinates: [-23.62, 15.12] },
+  };
+  const fitFeatures = rowByIso.has("CPV")
+    ? projectFeatures.concat([cpvPoint])
+    : projectFeatures;
+
+  const projection = d3.geoMercator().fitExtent(
+    [[18, 18], [502, 402]],
+    { type: "FeatureCollection", features: fitFeatures }
+  );
+  const path = d3.geoPath(projection);
+  const values = rows
+    .map(row => Number(row.value))
+    .filter(Number.isFinite);
+  const min = values.length ? Math.min(...values) : 0;
+  const max = values.length ? Math.max(...values) : 1;
+  const scale = d3.scaleQuantize()
+    .domain(min === max ? [min - 1, max + 1] : [min, max])
+    .range(COLORS.teal);
+
+  const root = svg.append("g").attr("class", "map-root");
+
+  svg.call(
+    d3.zoom()
+      .scaleExtent([1, 5])
+      .translateExtent([[-80, -80], [600, 500]])
+      .on("zoom", event => root.attr("transform", event.transform))
+  );
+
+  root.selectAll(".map-neighbor")
+    .data(neighborFeatures)
+    .join("path")
+    .attr("class", "map-neighbor")
+    .attr("d", path);
+
+  root.selectAll(".map-country")
+    .data(projectFeatures)
+    .join("path")
+    .attr("class", "map-country")
+    .attr("d", path)
+    .attr("fill", feature => {
+      const iso = COUNTRY_NUMERIC_TO_ISO[String(feature.id)];
+      const row = rowByIso.get(iso);
+      const value = metricValue(row, state.mapMetric);
+      return Number.isFinite(value) ? scale(value) : "#20211e";
+    })
+    .attr("stroke", feature => {
+      const iso = COUNTRY_NUMERIC_TO_ISO[String(feature.id)];
+      return blocColor(rowByIso.get(iso)?.analytical_bloc_code);
+    })
+    .attr("stroke-width", feature => {
+      const iso = COUNTRY_NUMERIC_TO_ISO[String(feature.id)];
+      if (state.country === iso) return 3;
+      return rowByIso.get(iso)?.analytical_bloc_code === state.bloc ? 1.6 : 0.65;
+    })
+    .attr("opacity", feature => {
+      const iso = COUNTRY_NUMERIC_TO_ISO[String(feature.id)];
+      if (!state.country) return 1;
+      return state.country === iso ? 1 : 0.48;
+    })
+    .on("mousemove", (event, feature) => {
+      const iso = COUNTRY_NUMERIC_TO_ISO[String(feature.id)];
+      const row = rowByIso.get(iso);
+      const val = metricValue(row, state.mapMetric);
+      tooltip
+        .style("opacity", 1)
+        .style("left", `${event.offsetX}px`)
+        .style("top", `${event.offsetY}px`)
+        .html(
+          `<b>${escapeHTML(row?.country_name || iso)}</b><br>` +
+          `<span class="muted">${escapeHTML(row?.analytical_bloc_code || "")}</span><br>` +
+          `${escapeHTML(metricMeta.label)}: <b>${metricMeta.format(val)}</b>`
+        );
+    })
+    .on("mouseleave", () => tooltip.style("opacity", 0))
+    .on("click", (_event, feature) => {
+      const iso = COUNTRY_NUMERIC_TO_ISO[String(feature.id)];
+      if (window.dashboardSelectCountry) window.dashboardSelectCountry(iso);
+    });
+
+  root.selectAll(".map-label")
+    .data(projectFeatures)
+    .join("text")
+    .attr("class", "map-label")
+    .attr("transform", feature => {
+      const point = path.centroid(feature);
+      return `translate(${point[0]},${point[1]})`;
+    })
+    .text(feature => COUNTRY_NUMERIC_TO_ISO[String(feature.id)]);
+
+  if (rowByIso.has("CPV")) {
+    const cpvRow = rowByIso.get("CPV");
+    const [cx, cy] = projection(cpvPoint.geometry.coordinates);
+    root.append("circle")
+      .attr("class", "map-country map-point")
+      .attr("cx", cx)
+      .attr("cy", cy)
+      .attr("r", state.country === "CPV" ? 5 : 4)
+      .attr("fill", Number.isFinite(metricValue(cpvRow, state.mapMetric)) ? scale(metricValue(cpvRow, state.mapMetric)) : "#20211e")
+      .attr("stroke", blocColor(cpvRow?.analytical_bloc_code))
+      .attr("stroke-width", state.country === "CPV" ? 2.5 : 1.4)
+      .on("mousemove", event => {
+        const val = metricValue(cpvRow, state.mapMetric);
+        tooltip
+          .style("opacity", 1)
+          .style("left", `${event.offsetX}px`)
+          .style("top", `${event.offsetY}px`)
+          .html(
+            `<b>${escapeHTML(cpvRow?.country_name || "Cabo Verde")}</b><br>` +
+            `<span class="muted">${escapeHTML(cpvRow?.analytical_bloc_code || "")}</span><br>` +
+            `${escapeHTML(metricMeta.label)}: <b>${metricMeta.format(val)}</b>`
+          );
+      })
+      .on("mouseleave", () => tooltip.style("opacity", 0))
+      .on("click", () => {
+        if (window.dashboardSelectCountry) window.dashboardSelectCountry("CPV");
+      });
+
+    root.append("text")
+      .attr("class", "map-label")
+      .attr("x", cx)
+      .attr("y", cy - 8)
+      .text("CPV");
+  }
+}
+
+function renderPartnerBars(rows) {
+  const el = document.getElementById("partner-bars");
+  if (!el) return;
+  if (!rows || !rows.length) {
+    emptyHTML("partner-bars", "No partner data for this selection.");
+    return;
+  }
+
+  const max = Math.max(...rows.map(row => Number(row.total_trade_billions_usd) || 0), 1);
+  el.innerHTML = rows.slice(0, 10).map(row => {
+    const exports = Number(row.exports_billions_usd) || 0;
+    const imports = Number(row.imports_billions_usd) || 0;
+    const total = Math.max(exports + imports, 0.000001);
+    const width = Math.max(3, (Number(row.total_trade_billions_usd || 0) / max) * 100);
+    const expWidth = Math.max(0, (exports / total) * width);
+    const impWidth = Math.max(0, (imports / total) * width);
+    return `
+      <div class="bar-row" title="${escapeHTML(row.counterpart_name || row.counterpart_iso3)}">
+        <div class="bar-name">${escapeHTML(row.counterpart_name || row.counterpart_iso3)}</div>
+        <div class="bar-track">
+          <div class="bar-export" style="width:${expWidth}%"></div>
+          <div class="bar-import" style="width:${impWidth}%"></div>
+        </div>
+        <div class="bar-value">${shortMoneyB(row.total_trade_billions_usd)}</div>
+      </div>`;
+  }).join("");
+}
+
+function renderPartnerTrend(rows, p1, p2) {
+  const ctx = canvas("partner-trend");
+  if (!ctx) return;
+  if (!rows || !rows.length) return chartEmpty("partner-trend", "Select two partners with time-series coverage.");
+
+  const years = [...new Set(rows.map(row => row.year))].sort((a, b) => a - b);
+  const dataFor = iso => years.map(year => {
+    const found = rows.find(row => row.year === year && row.counterpart_iso3 === iso);
+    return found ? found.share_pct : null;
+  });
+
+  chartStore["partner-trend"] = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: years,
+      datasets: [
+        { label: p1, data: dataFor(p1), borderColor: COLORS.exports, backgroundColor: COLORS.exports, tension: 0.25, spanGaps: true, pointRadius: 2 },
+        { label: p2, data: dataFor(p2), borderColor: COLORS.imports, backgroundColor: COLORS.imports, tension: 0.25, spanGaps: true, pointRadius: 2 },
+      ],
+    },
+    options: lineOptions("Partner share of total trade (%)", "Share (%)"),
+  });
+}
+
+function renderHHI(data, state) {
+  const ctx = canvas("hhi-chart");
+  if (!ctx) return;
+  const rows = data?.hhi || [];
+  if (!rows.length) return chartEmpty("hhi-chart", "No HHI data.");
+
+  if (state.country) {
+    const selected = rows.filter(row => row.country_iso3 === state.country || row.analytical_bloc_code === state.bloc);
+    const labels = selected.map(row => row.country_iso3 || row.analytical_bloc_code);
+    chartStore["hhi-chart"] = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [{
+          label: `HHI, ${state.year}`,
+          data: selected.map(row => row.hhi),
+          backgroundColor: selected.map(row => row.country_iso3 === state.country ? COLORS.exports : COLORS.grid),
+        }],
+      },
+      options: barOptions("Country HHI against bloc peers", "HHI", {
+        plugins: { legend: { display: false } },
+      }),
+    });
+    return;
+  }
+
+  const blocs = [...new Set(rows.map(row => row.analytical_bloc_code))].sort();
+  const years = [...new Set(rows.map(row => row.year))].sort((a, b) => a - b);
+  chartStore["hhi-chart"] = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: years,
+      datasets: blocs.map(bloc => ({
+        label: bloc,
+        data: years.map(year => rows.find(row => row.year === year && row.analytical_bloc_code === bloc)?.hhi ?? null),
+        borderColor: blocColor(bloc),
+        backgroundColor: blocColor(bloc),
+        borderWidth: bloc === state.bloc ? 2.6 : 1.2,
+        pointRadius: 0,
+        tension: 0.24,
+        spanGaps: true,
+      })).concat([{
+        label: "High concentration threshold",
+        data: years.map(() => 0.25),
+        borderColor: COLORS.warning,
+        borderDash: [4, 4],
+        pointRadius: 0,
+        borderWidth: 1,
+      }]),
+    },
+    options: lineOptions("Partner HHI over time", "HHI"),
+  });
+}
+
+function renderIntegration(rows, state) {
+  const ctx = canvas("integration-chart");
+  if (!ctx) return;
+  if (!rows || !rows.length) return chartEmpty("integration-chart", "No bloc comparison data.");
+
+  const blocs = [...new Set(rows.map(row => row.analytical_bloc_code))].sort();
+  const years = [...new Set(rows.map(row => row.year))].sort((a, b) => a - b);
+  chartStore["integration-chart"] = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: years,
+      datasets: blocs.map(bloc => ({
+        label: bloc,
+        data: years.map(year => rows.find(row => row.year === year && row.analytical_bloc_code === bloc)?.intra_share_pct ?? null),
+        borderColor: blocColor(bloc),
+        backgroundColor: blocColor(bloc),
+        borderWidth: bloc === state.bloc ? 2.6 : 1.2,
+        pointRadius: 0,
+        tension: 0.24,
+        spanGaps: true,
+      })),
+    },
+    options: lineOptions("Trade openness proxy (% of GDP)", "Trade / GDP (%)"),
+  });
+}
+
+function renderGrowth(rows, state) {
+  const ctx = canvas("growth-chart");
+  if (!ctx) return;
+  if (!rows || !rows.length) return chartEmpty("growth-chart", "No growth data.");
+
+  const years = [...new Set(rows.map(row => row.year))].sort((a, b) => a - b);
+  const groups = [...new Set(rows.map(row => row.series_code || row.country_iso3 || row.analytical_bloc_code))];
+  chartStore["growth-chart"] = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: years,
+      datasets: groups.map(code => {
+        const first = rows.find(row => (row.series_code || row.country_iso3 || row.analytical_bloc_code) === code);
+        const bloc = first?.analytical_bloc_code || code;
+        const selected = state.country ? code === state.country : code === state.bloc;
+        return {
+          label: first?.series_name || first?.country_name || code,
+          data: years.map(year => rows.find(row => year === row.year && (row.series_code || row.country_iso3 || row.analytical_bloc_code) === code)?.index_value ?? null),
+          borderColor: selected ? COLORS.exports : blocColor(bloc),
+          backgroundColor: selected ? COLORS.exports : blocColor(bloc),
+          borderWidth: selected ? 2.6 : 1.2,
+          pointRadius: 0,
+          tension: 0.25,
+          spanGaps: true,
+          hidden: groups.length > 8 && !selected,
+        };
+      }).concat([{
+        label: "1990 baseline",
+        data: years.map(() => 100),
+        borderColor: COLORS.muted,
+        borderDash: [3, 4],
+        borderWidth: 1,
+        pointRadius: 0,
+      }]),
+    },
+    options: lineOptions("Indexed trade growth (1990 = 100)", "Index (1990=100)"),
+  });
+}
+
+function renderStructureTree(overview) {
+  const el = document.getElementById("structure-tree");
+  if (!el) return;
+  const exportVal = Number(overview.exports_billions_usd) || 0;
+  const importVal = Number(overview.imports_billions_usd) || 0;
+  const total = Math.max(exportVal + importVal, 1);
+  const balance = Number(overview.trade_balance_billions_usd);
+  const cells = [
+    { name: "Exports", val: shortMoneyB(exportVal), pct: exportVal / total, cls: "large", color: "#0f6e56" },
+    { name: "Imports", val: shortMoneyB(importVal), pct: importVal / total, cls: "large", color: "#6f65c8" },
+    { name: "Trade/GDP", val: fmtPct(overview.trade_openness_pct_gdp), pct: 0.4, cls: "medium", color: "#185fa5" },
+    { name: "Top partner", val: fmtPct(overview.top_partner_share_pct), pct: 0.28, cls: "medium", color: "#ba7517" },
+    { name: "Balance", val: Number.isFinite(balance) ? shortMoneyB(balance) : "--", pct: 0.2, cls: "small", color: balance >= 0 ? "#1d9e75" : "#ef7668" },
+    { name: "HHI", val: fmtPlain(overview.hhi, 3), pct: 0.15, cls: "small", color: "#507d71" },
+  ];
+  el.innerHTML = cells.map(cell => `
+    <div class="tree-cell ${cell.cls}" style="background:${cell.color}">
+      <div class="name">${escapeHTML(cell.name)}</div>
+      <div class="val">${escapeHTML(cell.val)}</div>
+    </div>
+  `).join("");
+}
+
+function renderConflict(rows) {
+  const ctx = canvas("conflict-chart");
+  if (!ctx) return;
+  if (!rows || !rows.length) return chartEmpty("conflict-chart", "No ACLED hotspot data.");
+  const selected = [...rows].sort((a, b) => (b.violent_events || 0) - (a.violent_events || 0)).slice(0, 10).reverse();
+  chartStore["conflict-chart"] = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: selected.map(row => row.admin1 || row.country_name || row.country_iso3),
+      datasets: [
+        { label: "Violent events", data: selected.map(row => row.violent_events || 0), backgroundColor: "#d9c875" },
+        { label: "Fatalities", data: selected.map(row => row.fatalities || 0), backgroundColor: "#d87b8a" },
+      ],
+    },
+    options: barOptions("Conflict events & fatalities", "Count"),
+  });
+}
+
+function renderFragility(rows) {
+  const ctx = canvas("fragility-chart");
+  if (!ctx) return;
+  if (!rows || !rows.length) return chartEmpty("fragility-chart", "No FSI data.");
+
+  const labels = ["Cohesion", "Economic", "Political", "Social"];
+  if (rows.length === 1) {
+    const row = rows[0];
+    chartStore["fragility-chart"] = new Chart(ctx, {
+      type: "radar",
+      data: {
+        labels,
+        datasets: [{
+          label: row.country_name || row.country_iso3,
+          data: [row.cohesion_score, row.economic_score, row.political_score, row.social_cross_cutting_score],
+          borderColor: COLORS.imports,
+          backgroundColor: "rgba(127,119,221,0.22)",
+          pointBackgroundColor: COLORS.imports,
+        }],
+      },
+      options: radarOptions("Fragility components (latest FSI)", 30),
+    });
+    return;
+  }
+
+  const top = [...rows].sort((a, b) => (b.fsi_total_score || 0) - (a.fsi_total_score || 0)).slice(0, 8).reverse();
+  chartStore["fragility-chart"] = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: top.map(row => row.country_iso3),
+      datasets: [
+        { label: "Cohesion", data: top.map(row => row.cohesion_score || 0), backgroundColor: COLORS.danger },
+        { label: "Economic", data: top.map(row => row.economic_score || 0), backgroundColor: COLORS.warning },
+        { label: "Political", data: top.map(row => row.political_score || 0), backgroundColor: COLORS.imports },
+        { label: "Social", data: top.map(row => row.social_cross_cutting_score || 0), backgroundColor: COLORS.exports },
+      ],
+    },
+    options: barOptions("Fragility components (latest FSI)", "Score"),
+  });
+}
+
+function radarOptions(title, max) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 3 } },
+      title: { display: !!title, text: title, color: COLORS.text, font: { size: 12, weight: "500" } },
+      tooltip: { backgroundColor: "#11120f", borderColor: "#55564f", borderWidth: 1 },
+    },
+    scales: {
+      r: {
+        suggestedMin: 0,
+        suggestedMax: max,
+        angleLines: { color: COLORS.grid },
+        grid: { color: COLORS.grid },
+        pointLabels: { color: COLORS.text },
+        ticks: { color: COLORS.muted, backdropColor: "transparent" },
+      },
+    },
+  };
+}
+
+function renderRiskRadar(scores, label) {
+  const ctx = canvas("risk-chart");
+  if (!ctx) return;
+  const labels = ["Debt", "Inflation", "CA pressure", "Partner HHI", "Fragility", "Conflict"];
+  chartStore["risk-chart"] = new Chart(ctx, {
+    type: "radar",
+    data: {
+      labels,
+      datasets: [{
+        label,
+        data: labels.map(key => scores[key] || 0),
+        borderColor: COLORS.warning,
+        backgroundColor: "rgba(247,210,93,0.18)",
+        pointBackgroundColor: COLORS.warning,
+      }],
+    },
+    options: radarOptions("Relative risk pressure (0-100)", 100),
+  });
+}
+
+function renderHealth(rows) {
+  const el = document.getElementById("health-grid");
+  if (!el) return;
+  if (!rows || !rows.length) {
+    el.innerHTML = `<div class="empty-state">No coverage summary available.</div>`;
+    return;
+  }
+  el.innerHTML = rows.map(row => `
+    <div class="health-card">
+      <div class="lbl">${escapeHTML(row.label)}</div>
+      <div class="val">${escapeHTML(row.value)}</div>
+      <div class="desc">${escapeHTML(row.description)}</div>
+    </div>
+  `).join("");
+}

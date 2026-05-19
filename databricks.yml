@@ -1,0 +1,20 @@
+# This is a Declarative Automation Bundle definition for cemac-ecowas-aes-trade-observatory.
+# The Databricks extension requires databricks.yml configuration file.
+# See https://docs.databricks.com/dev-tools/bundles/index.html for documentation.
+
+bundle:
+  name: cemac-ecowas-aes-trade-observatory
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-7b56a3a7-18e9.cloud.databricks.com
+
+  ## Optionally, there could be 'staging' or 'prod' targets here.
+  #
+  # prod:
+  #   workspace:
+  #     host: https://dbc-7b56a3a7-18e9.cloud.databricks.com
+
