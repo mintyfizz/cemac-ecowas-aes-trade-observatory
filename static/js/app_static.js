@@ -287,10 +287,14 @@ function localPartners(bloc, year, country) {
     a.total_trade_billions_usd += r.total_trade_billions_usd ?? 0;
   }
   const rows = Object.values(agg).sort((a, z) => z.total_trade_billions_usd - a.total_trade_billions_usd);
-  const grandTotal = rows.reduce((s, r) => s + r.total_trade_billions_usd, 0);
+  // Use the timeseries total (all bilateral flows) so shares aren't inflated by
+  // the ISO3-only subset of the top-trade-partners table.
+  const blocTotal = DB.timeseries
+    .filter(r => r.analytical_bloc_code === bloc && r.year === year)
+    .reduce((s, r) => s + (r.total_trade_billions_usd ?? 0), 0);
   return rows.slice(0, 10).map((r, i) => ({
     ...r,
-    total_trade_partner_share_pct: grandTotal ? r.total_trade_billions_usd / grandTotal * 100 : null,
+    total_trade_partner_share_pct: blocTotal ? r.total_trade_billions_usd / blocTotal * 100 : null,
     partner_rank: i + 1,
   }));
 }
@@ -309,10 +313,13 @@ function localPartnerHistory(bloc, partner1, partner2, country) {
   const valid = DB.partners.filter(
     r => r.analytical_bloc_code === bloc && ISO3_RE.test(r.counterpart_iso3),
   );
-  // Year totals across all counterparts for this bloc
+  // Year totals from the country timeseries (includes all bilateral flows,
+  // not just the top-15 ISO3 partners) so shares are correctly denominated.
   const yearTotals = {};
-  for (const r of valid) {
-    yearTotals[r.year] = (yearTotals[r.year] ?? 0) + (r.total_trade_billions_usd ?? 0);
+  for (const r of DB.timeseries) {
+    if (r.analytical_bloc_code === bloc && r.total_trade_billions_usd != null) {
+      yearTotals[r.year] = (yearTotals[r.year] ?? 0) + r.total_trade_billions_usd;
+    }
   }
   // Selected partner totals by year
   const selected = valid.filter(r => targets.has(r.counterpart_iso3));
