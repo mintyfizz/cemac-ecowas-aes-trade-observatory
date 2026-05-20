@@ -515,7 +515,15 @@ async def get_growth(
     bloc: str = Query("CEMAC"),
     country: str | None = Query(None),
 ) -> list[dict]:
-    """Indexed trade growth (base 1990=100) per country in the selected scope."""
+    """Indexed total goods trade growth.
+
+    Standard formula:
+      index_value = total_trade_billions_usd / 1990 total_trade_billions_usd * 100
+
+    Total trade is exports + imports from the loaded IMF IMTS/DOTS mart, in
+    nominal current USD. Missing current-year values remain null; they are not
+    converted to zero.
+    """
     _validate_bloc(bloc)
     _validate_country(country)
 
@@ -526,11 +534,18 @@ async def get_growth(
                 WITH base AS (
                     SELECT country_iso3, total_trade_billions_usd AS base_val
                     FROM {CATALOG}.gold.dashboard_country_timeseries
-                    WHERE year = 1990 AND country_iso3 = ?
+                    WHERE year = 1990
+                      AND country_iso3 = ?
+                      AND total_trade_billions_usd > 0
                 )
-                SELECT t.country_iso3, t.country_name, t.year,
+                SELECT t.country_iso3, t.country_name, t.analytical_bloc_code,
+                       t.year, 1990 AS base_year,
+                       b.base_val AS base_trade_billions_usd,
                        t.total_trade_billions_usd,
-                       (t.total_trade_billions_usd / NULLIF(b.base_val, 0)) * 100 AS index_value
+                       CASE
+                         WHEN t.total_trade_billions_usd IS NOT NULL
+                         THEN (t.total_trade_billions_usd / b.base_val) * 100
+                       END AS index_value
                 FROM {CATALOG}.gold.dashboard_country_timeseries t
                 JOIN base b ON b.country_iso3 = t.country_iso3
                 WHERE t.country_iso3 = ?
@@ -539,22 +554,32 @@ async def get_growth(
                 [country, country],
             )
         else:
+            members = BLOCS[bloc]
+            placeholders = ", ".join(["?"] * len(members))
             rows = dbq(
                 f"""
                 WITH base AS (
                     SELECT country_iso3, total_trade_billions_usd AS base_val
                     FROM {CATALOG}.gold.dashboard_country_timeseries
-                    WHERE year = 1990 AND analytical_bloc_code = ?
+                    WHERE year = 1990
+                      AND country_iso3 IN ({placeholders})
+                      AND total_trade_billions_usd > 0
                 )
-                SELECT t.country_iso3, t.country_name, t.year,
+                SELECT t.country_iso3, t.country_name,
+                       ? AS analytical_bloc_code,
+                       t.year, 1990 AS base_year,
+                       b.base_val AS base_trade_billions_usd,
                        t.total_trade_billions_usd,
-                       (t.total_trade_billions_usd / NULLIF(b.base_val, 0)) * 100 AS index_value
+                       CASE
+                         WHEN t.total_trade_billions_usd IS NOT NULL
+                         THEN (t.total_trade_billions_usd / b.base_val) * 100
+                       END AS index_value
                 FROM {CATALOG}.gold.dashboard_country_timeseries t
                 JOIN base b ON b.country_iso3 = t.country_iso3
-                WHERE t.analytical_bloc_code = ?
-                ORDER BY t.year
+                WHERE t.country_iso3 IN ({placeholders})
+                ORDER BY t.country_iso3, t.year
                 """,
-                [bloc, bloc],
+                [*members, bloc, *members],
             )
         return rows
     except Exception as exc:
@@ -576,17 +601,35 @@ async def get_operational(
         scope_filter = "country_iso3 = ?" if country else "analytical_bloc_code = ?"
         scope_val = country if country else bloc
 
-        conflict_rows = dbq(
-            f"""
-            SELECT country_iso3, country_name, analytical_bloc_code,
-                   admin1, window_start_year, window_end_year,
-                   violent_events, fatalities, fatalities_per_million
-            FROM {CATALOG}.gold.dashboard_conflict_hotspots
-            WHERE {scope_filter}
-            ORDER BY hotspot_rank
-            """,
-            [scope_val],
-        )
+        if country:
+            conflict_rows = dbq(
+                f"""
+                SELECT country_iso3, country_name, analytical_bloc_code,
+                       admin1, window_start_year, window_end_year,
+                       violent_events, fatalities, fatalities_per_million
+                FROM {CATALOG}.gold.dashboard_conflict_hotspots
+                WHERE country_iso3 = ?
+                ORDER BY hotspot_rank
+                """,
+                [scope_val],
+            )
+        else:
+            conflict_rows = dbq(
+                f"""
+                SELECT country_iso3, country_name, analytical_bloc_code,
+                       CAST(NULL AS STRING) AS admin1,
+                       MIN(window_start_year) AS window_start_year,
+                       MAX(window_end_year) AS window_end_year,
+                       SUM(violent_events) AS violent_events,
+                       SUM(fatalities) AS fatalities,
+                       CAST(NULL AS DOUBLE) AS fatalities_per_million
+                FROM {CATALOG}.gold.dashboard_conflict_hotspots
+                WHERE analytical_bloc_code = ?
+                GROUP BY country_iso3, country_name, analytical_bloc_code
+                ORDER BY violent_events DESC, fatalities DESC, country_name
+                """,
+                [scope_val],
+            )
 
         fragility_rows = dbq(
             f"""

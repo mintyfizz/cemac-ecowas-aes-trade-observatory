@@ -120,11 +120,11 @@
           <h3 id="growth-title">Trade growth indexed to 1990</h3>
           <p class="sub" id="growth-sub">Base = 100 - nominal USD</p>
           <canvas id="growth-chart"></canvas>
-          <p class="note">Product composition and mirror gaps are omitted until UN Comtrade is available.</p>
+          <p class="note" id="growth-note">Index = total goods trade / 1990 total goods trade * 100. Nominal current USD.</p>
         </div>
         <div class="chart-box tree-box">
-          <h3>Trade dependence mix</h3>
-          <p class="sub">Data-backed replacement for product composition</p>
+          <h3>Trade exposure mix</h3>
+          <p class="sub">Exports, imports, openness, balance and partner concentration</p>
           <div class="tree" id="structure-tree"></div>
         </div>
       </div>
@@ -135,7 +135,7 @@
       <div class="row context-row">
         <div class="chart-box">
           <h3 id="conflict-title">Conflict events &amp; fatalities</h3>
-          <p class="sub">ACLED - latest 3-year hotspot window</p>
+          <p class="sub" id="conflict-sub">ACLED - latest 3-year hotspot window</p>
           <canvas id="conflict-chart"></canvas>
         </div>
 
@@ -165,7 +165,7 @@
 
   <div class="toast" id="toast" role="alert" aria-live="assertive"></div>
 
-  <script src="/js/charts.js"></script>
-  <script src="/js/app.js"></script>
+  <script src="/js/charts.js?v=20260520-growth-hover-stable"></script>
+  <script src="/js/app.js?v=20260520-growth-hover-stable"></script>
 </body>
 </html>

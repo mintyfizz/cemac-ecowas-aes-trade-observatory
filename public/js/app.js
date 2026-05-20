@@ -286,8 +286,10 @@ async function loadGrowth(version) {
   if (!isFresh(version)) return;
   document.getElementById("growth-title").textContent = `${scopeName()} · Trade growth indexed to 1990`;
   document.getElementById("growth-sub").textContent = State.country
-    ? "Selected country - base = 100 - nominal USD"
-    : `${State.bloc} members - base = 100 - nominal USD`;
+    ? "Selected country - 1990 = 100 - nominal current USD"
+    : `${State.bloc} members - each country rebased to 1990 = 100`;
+  document.getElementById("growth-note").textContent =
+    "Index = total goods trade (exports + imports) / 1990 total goods trade * 100. Log scale is used when outliers would flatten the comparison.";
   renderGrowth(rows, State);
 }
 
@@ -299,7 +301,12 @@ async function loadOperational(version) {
   });
   const data = await fetchJSON(`/api/operational?${params}`);
   if (!isFresh(version)) return;
-  document.getElementById("conflict-title").textContent = `${scopeName()} · Conflict hotspots`;
+  document.getElementById("conflict-title").textContent = State.country
+    ? `${scopeName()} · Conflict hotspots`
+    : `${scopeName()} · Conflict by country`;
+  document.getElementById("conflict-sub").textContent = State.country
+    ? "ACLED - admin1 regions, latest 3-year hotspot window"
+    : "ACLED - member countries, latest 3-year window";
   renderConflict(data.conflict || []);
   renderFragility(data.fragility || []);
 }

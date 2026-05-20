@@ -382,12 +382,14 @@ function localGrowth(bloc, country) {
     scoped = DB.timeseries.filter(r => r.country_iso3 === country);
   } else {
     const members = new Set(BLOCS[bloc] || []);
-    scoped = DB.timeseries.filter(r => r.analytical_bloc_code === bloc && members.has(r.country_iso3));
+    scoped = DB.timeseries.filter(r => members.has(r.country_iso3));
   }
 
   const base1990 = {};
   for (const r of scoped) {
-    if (r.year === 1990) base1990[r.country_iso3] = r.total_trade_billions_usd;
+    if (r.year === 1990 && r.total_trade_billions_usd > 0) {
+      base1990[r.country_iso3] = r.total_trade_billions_usd;
+    }
   }
 
   return scoped
@@ -395,10 +397,13 @@ function localGrowth(bloc, country) {
     .map(r => ({
       country_iso3: r.country_iso3,
       country_name: r.country_name,
+      analytical_bloc_code: country ? r.analytical_bloc_code : bloc,
       year: r.year,
+      base_year: 1990,
+      base_trade_billions_usd: base1990[r.country_iso3] ?? null,
       total_trade_billions_usd: r.total_trade_billions_usd,
-      index_value: base1990[r.country_iso3]
-        ? (r.total_trade_billions_usd ?? 0) / base1990[r.country_iso3] * 100
+      index_value: base1990[r.country_iso3] && r.total_trade_billions_usd != null
+        ? r.total_trade_billions_usd / base1990[r.country_iso3] * 100
         : null,
     }));
 }
@@ -406,20 +411,45 @@ function localGrowth(bloc, country) {
 // /api/operational?bloc=B&year=Y[&country=C]
 function localOperational(bloc, year, country) {
   const isCountry = !!country;
-  const conflict = DB.conflict
-    .filter(r => isCountry ? r.country_iso3 === country : r.analytical_bloc_code === bloc)
-    .sort((a, z) => (a.hotspot_rank ?? 999) - (z.hotspot_rank ?? 999))
-    .map(r => ({
-      country_iso3: r.country_iso3,
-      country_name: r.country_name,
-      analytical_bloc_code: r.analytical_bloc_code,
-      admin1: r.admin1,
-      window_start_year: r.window_start_year,
-      window_end_year: r.window_end_year,
-      violent_events: r.violent_events,
-      fatalities: r.fatalities,
-      fatalities_per_million: r.fatalities_per_million,
-    }));
+  const conflict = isCountry
+    ? DB.conflict
+        .filter(r => r.country_iso3 === country)
+        .sort((a, z) => (a.hotspot_rank ?? 999) - (z.hotspot_rank ?? 999))
+        .map(r => ({
+          country_iso3: r.country_iso3,
+          country_name: r.country_name,
+          analytical_bloc_code: r.analytical_bloc_code,
+          admin1: r.admin1,
+          window_start_year: r.window_start_year,
+          window_end_year: r.window_end_year,
+          violent_events: r.violent_events,
+          fatalities: r.fatalities,
+          fatalities_per_million: r.fatalities_per_million,
+        }))
+    : Object.values(DB.conflict
+        .filter(r => r.analytical_bloc_code === bloc)
+        .reduce((acc, r) => {
+          const key = r.country_iso3;
+          if (!acc[key]) {
+            acc[key] = {
+              country_iso3: r.country_iso3,
+              country_name: r.country_name,
+              analytical_bloc_code: r.analytical_bloc_code,
+              admin1: null,
+              window_start_year: r.window_start_year,
+              window_end_year: r.window_end_year,
+              violent_events: 0,
+              fatalities: 0,
+              fatalities_per_million: null,
+            };
+          }
+          acc[key].window_start_year = Math.min(acc[key].window_start_year ?? r.window_start_year, r.window_start_year ?? acc[key].window_start_year);
+          acc[key].window_end_year = Math.max(acc[key].window_end_year ?? r.window_end_year, r.window_end_year ?? acc[key].window_end_year);
+          acc[key].violent_events += r.violent_events ?? 0;
+          acc[key].fatalities += r.fatalities ?? 0;
+          return acc;
+        }, {}))
+        .sort((a, z) => (z.violent_events ?? 0) - (a.violent_events ?? 0) || (z.fatalities ?? 0) - (a.fatalities ?? 0) || a.country_name.localeCompare(z.country_name));
 
   const fragility = DB.fragility
     .filter(r => isCountry ? r.country_iso3 === country : r.analytical_bloc_code === bloc)
@@ -729,15 +759,22 @@ async function loadGrowth(version) {
   if (!isFresh(version)) return;
   document.getElementById("growth-title").textContent = `${scopeName()} · Trade growth indexed to 1990`;
   document.getElementById("growth-sub").textContent = State.country
-    ? "Selected country - base = 100 - nominal USD"
-    : `${State.bloc} members - base = 100 - nominal USD`;
+    ? "Selected country - 1990 = 100 - nominal current USD"
+    : `${State.bloc} members - each country rebased to 1990 = 100`;
+  document.getElementById("growth-note").textContent =
+    "Index = total goods trade (exports + imports) / 1990 total goods trade * 100. Log scale is used when outliers would flatten the comparison.";
   renderGrowth(rows, State);
 }
 
 async function loadOperational(version) {
   const data = localOperational(State.bloc, State.year, State.country);
   if (!isFresh(version)) return;
-  document.getElementById("conflict-title").textContent = `${scopeName()} · Conflict hotspots`;
+  document.getElementById("conflict-title").textContent = State.country
+    ? `${scopeName()} · Conflict hotspots`
+    : `${scopeName()} · Conflict by country`;
+  document.getElementById("conflict-sub").textContent = State.country
+    ? "ACLED - admin1 regions, latest 3-year hotspot window"
+    : "ACLED - member countries, latest 3-year window";
   renderConflict(data.conflict || []);
   renderFragility(data.fragility || []);
 }

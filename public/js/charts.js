@@ -28,6 +28,13 @@ const COUNTRY_NUMERIC_TO_ISO = {
   "686": "SEN", "694": "SLE", "768": "TGO",
 };
 
+const COUNTRY_COLORS = {
+  CMR: "#2dd4bf", CAF: "#fb7185", TCD: "#facc15", COG: "#60a5fa", GNQ: "#c084fc", GAB: "#34d399",
+  BEN: "#38bdf8", BFA: "#f97316", CPV: "#a3e635", CIV: "#f59e0b", GMB: "#e879f9", GHA: "#22c55e",
+  GIN: "#06b6d4", GNB: "#f43f5e", LBR: "#818cf8", MLI: "#fbbf24", NER: "#10b981", NGA: "#3b82f6",
+  SEN: "#eab308", SLE: "#14b8a6", TGO: "#a78bfa",
+};
+
 const NEIGHBOR_NUMERIC = new Set(["478", "012", "12", "434", "729", "728", "180", "024", "24", "678", "504", "732"]);
 
 const chartStore = {};
@@ -58,9 +65,14 @@ function lineOptions(title, yTitle, extra = {}) {
   return {
     responsive: true,
     maintainAspectRatio: false,
+    animation: false,
+    transitions: {
+      active: { animation: { duration: 0 } },
+      resize: { animation: { duration: 0 } },
+    },
     interaction: { mode: "index", intersect: false },
     plugins: {
-      legend: { position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 3 } },
+      legend: { position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 3, usePointStyle: true, pointStyle: "line" } },
       title: { display: !!title, text: title, color: COLORS.text, font: { size: 12, weight: "500" } },
       tooltip: { backgroundColor: "#11120f", borderColor: "#55564f", borderWidth: 1 },
     },
@@ -81,6 +93,20 @@ function barOptions(title, xTitle, extra = {}) {
     },
     ...extra,
   });
+}
+
+function seriesColor(code, fallbackBloc) {
+  return COUNTRY_COLORS[code] || blocColor(fallbackBloc) || COLORS.muted;
+}
+
+function formatIndexTick(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "";
+  if (n >= 1000) {
+    const short = n / 1000;
+    return `${Number.isInteger(short) ? short.toFixed(0) : short.toFixed(1)}k`;
+  }
+  return n.toFixed(0);
 }
 
 function emptyHTML(id, msg) {
@@ -122,6 +148,13 @@ function fmtPct(value, digits = 1) {
 function fmtPlain(value, digits = 1) {
   const n = Number(value);
   return Number.isFinite(n) ? n.toFixed(digits) : "--";
+}
+
+function fmtNumber(value, digits = 0) {
+  const n = Number(value);
+  return Number.isFinite(n)
+    ? n.toLocaleString("en-US", { maximumFractionDigits: digits, minimumFractionDigits: digits })
+    : "--";
 }
 
 function metricValue(row, metric) {
@@ -206,6 +239,8 @@ async function renderMap(rows, state, metricMeta) {
     .data(projectFeatures)
     .join("path")
     .attr("class", "map-country")
+    .attr("data-iso", feature => COUNTRY_NUMERIC_TO_ISO[String(feature.id)])
+    .attr("aria-label", feature => COUNTRY_NUMERIC_TO_ISO[String(feature.id)])
     .attr("d", path)
     .attr("fill", feature => {
       const iso = COUNTRY_NUMERIC_TO_ISO[String(feature.id)];
@@ -262,6 +297,8 @@ async function renderMap(rows, state, metricMeta) {
     const [cx, cy] = projection(cpvPoint.geometry.coordinates);
     root.append("circle")
       .attr("class", "map-country map-point")
+      .attr("data-iso", "CPV")
+      .attr("aria-label", "CPV")
       .attr("cx", cx)
       .attr("cy", cy)
       .attr("r", state.country === "CPV" ? 5 : 4)
@@ -432,6 +469,15 @@ function renderGrowth(rows, state) {
 
   const years = [...new Set(rows.map(row => row.year))].sort((a, b) => a - b);
   const groups = [...new Set(rows.map(row => row.series_code || row.country_iso3 || row.analytical_bloc_code))];
+  const rowBySeriesYear = new Map(rows.map(row => [`${row.series_code || row.country_iso3 || row.analytical_bloc_code}:${row.year}`, row]));
+  const values = rows.map(row => Number(row.index_value)).filter(Number.isFinite);
+  const maxIndex = values.length ? Math.max(...values) : 0;
+  const minIndex = values.length ? Math.min(...values.filter(value => value > 0)) : 100;
+  const useLogScale = maxIndex > 1500 && minIndex > 0;
+  const yTitle = useLogScale ? "Index (1990=100, log scale)" : "Index (1990=100)";
+  const logTicks = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000];
+  const logMax = logTicks.find(value => value >= maxIndex) || Math.ceil(maxIndex / 10000) * 10000;
+
   chartStore["growth-chart"] = new Chart(ctx, {
     type: "line",
     data: {
@@ -439,17 +485,20 @@ function renderGrowth(rows, state) {
       datasets: groups.map(code => {
         const first = rows.find(row => (row.series_code || row.country_iso3 || row.analytical_bloc_code) === code);
         const bloc = first?.analytical_bloc_code || code;
-        const selected = state.country ? code === state.country : code === state.bloc;
+        const selected = state.country ? code === state.country : true;
+        const color = seriesColor(code, bloc);
         return {
           label: first?.series_name || first?.country_name || code,
-          data: years.map(year => rows.find(row => year === row.year && (row.series_code || row.country_iso3 || row.analytical_bloc_code) === code)?.index_value ?? null),
-          borderColor: selected ? COLORS.exports : blocColor(bloc),
-          backgroundColor: selected ? COLORS.exports : blocColor(bloc),
-          borderWidth: selected ? 2.6 : 1.2,
+          data: years.map(year => rowBySeriesYear.get(`${code}:${year}`)?.index_value ?? null),
+          borderColor: color,
+          backgroundColor: color,
+          borderWidth: selected ? 2.35 : 1.4,
           pointRadius: 0,
-          tension: 0.25,
+          pointHitRadius: 14,
+          pointHoverRadius: 4.5,
+          pointHoverBorderWidth: 2,
+          tension: 0.18,
           spanGaps: true,
-          hidden: groups.length > 8 && !selected,
         };
       }).concat([{
         label: "1990 baseline",
@@ -458,9 +507,71 @@ function renderGrowth(rows, state) {
         borderDash: [3, 4],
         borderWidth: 1,
         pointRadius: 0,
+        pointHitRadius: 0,
+        pointHoverRadius: 0,
       }]),
     },
-    options: lineOptions("Indexed trade growth (1990 = 100)", "Index (1990=100)"),
+    options: lineOptions(
+      useLogScale ? "Indexed total goods trade growth (log scale)" : "Indexed total goods trade growth",
+      yTitle,
+      {
+        scales: {
+          x: { grid: { color: COLORS.grid }, ticks: { color: COLORS.text, maxRotation: 0 } },
+          y: {
+            type: useLogScale ? "logarithmic" : "linear",
+            min: useLogScale ? Math.max(20, logTicks.find(value => value <= minIndex) || 20) : undefined,
+            suggestedMin: useLogScale ? undefined : 0,
+            suggestedMax: useLogScale ? logMax : undefined,
+            afterBuildTicks: useLogScale
+              ? axis => {
+                  axis.ticks = logTicks
+                    .filter(value => value >= axis.min && value <= axis.max)
+                    .map(value => ({ value }));
+                }
+              : undefined,
+            grid: { color: COLORS.grid },
+            ticks: {
+              color: COLORS.text,
+              padding: 6,
+              maxTicksLimit: useLogScale ? 9 : 6,
+              callback: value => useLogScale ? formatIndexTick(value) : fmtPlain(value, 0),
+            },
+            title: { display: true, text: yTitle, color: COLORS.text },
+          },
+        },
+        interaction: { mode: "nearest", axis: "xy", intersect: false },
+        hover: { mode: "nearest", intersect: false },
+        plugins: {
+          legend: { position: "top", align: "end", labels: { boxWidth: 11, boxHeight: 3, usePointStyle: true, pointStyle: "line" } },
+          title: { display: true, text: useLogScale ? "Indexed total trade growth (log scale)" : "Indexed total trade growth", color: COLORS.text, font: { size: 12, weight: "500" } },
+          tooltip: {
+            mode: "nearest",
+            intersect: false,
+            axis: "xy",
+            backgroundColor: "#11120f",
+            borderColor: "#55564f",
+            borderWidth: 1,
+            displayColors: true,
+            filter: item => item.dataset.label !== "1990 baseline",
+            callbacks: {
+              title: items => items.length ? `Year ${items[0].label}` : "",
+              label: item => {
+                const code = groups[item.datasetIndex];
+                const row = rowBySeriesYear.get(`${code}:${item.label}`);
+                const index = Number(row?.index_value);
+                const multiple = Number.isFinite(index) ? index / 100 : null;
+                return `${item.dataset.label}: ${fmtNumber(index, 0)} (${fmtPlain(multiple, 1)}x 1990)`;
+              },
+              afterLabel: item => {
+                const code = groups[item.datasetIndex];
+                const row = rowBySeriesYear.get(`${code}:${item.label}`);
+                return `Trade: ${shortMoneyB(row?.total_trade_billions_usd)}`;
+              },
+            },
+          },
+        },
+      }
+    ),
   });
 }
 
