@@ -148,7 +148,7 @@ async def get_meta() -> dict:
 @app.get("/api/overview")
 async def get_overview(
     bloc: str = Query("CEMAC"),
-    year: int = Query(2023),
+    year: int = Query(2024),
     country: str | None = Query(None),
 ) -> dict:
     """KPI tiles and WEO econ cards for the selected scope."""
@@ -312,7 +312,7 @@ async def get_overview(
 @app.get("/api/map")
 async def get_map(
     metric: str = Query("total_trade"),
-    year: int = Query(2023),
+    year: int = Query(2024),
 ) -> list[dict]:
     """Country-level values for the choropleth map."""
     if metric not in VALID_METRICS:
@@ -337,7 +337,7 @@ async def get_map(
 @app.get("/api/partners")
 async def get_partners(
     bloc: str = Query("CEMAC"),
-    year: int = Query(2023),
+    year: int = Query(2024),
     country: str | None = Query(None),
 ) -> list[dict]:
     """Top 10 trade partners for the selected scope."""
@@ -474,15 +474,16 @@ async def get_concentration(
 
     try:
         if country:
+            # Return the selected country's own HHI trend across all years
             hhi_rows = dbq(
                 f"""
                 SELECT country_iso3, country_name, analytical_bloc_code,
                        total_trade_partner_hhi AS hhi, year
                 FROM {CATALOG}.gold.dashboard_country_timeseries
-                WHERE analytical_bloc_code = ? AND year = ?
-                ORDER BY total_trade_partner_hhi DESC NULLS LAST
+                WHERE country_iso3 = ?
+                ORDER BY year
                 """,
-                [bloc, year],
+                [country],
             )
         else:
             # Bloc-level HHI is trade-weighted across members, not a plain mean.
@@ -595,7 +596,7 @@ async def get_growth(
 @app.get("/api/operational")
 async def get_operational(
     bloc: str = Query("CEMAC"),
-    year: int = Query(2023),
+    year: int = Query(2024),
     country: str | None = Query(None),
 ) -> dict:
     """ACLED conflict events + FSI fragility components."""

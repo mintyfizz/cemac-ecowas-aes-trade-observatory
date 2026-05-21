@@ -164,8 +164,8 @@ function renderOverview(overview, previous = null) {
 
   kpi("kpi-trade", "Total trade", shortMoneyB(overview.total_trade_billions_usd), infoLine(metricDelta(overview.total_trade_billions_usd, previous?.total_trade_billions_usd, "pct", 1), `USD billions, ${State.year}`));
   kpi("kpi-partner", "Main partner", partner, partnerNote);
-  kpi("kpi-hhi", "Partner HHI", fmtPlain(overview.hhi, 3), infoLine(metricDelta(overview.hhi, previous?.hhi, "abs", 3), hhiBand(overview.hhi)));
-  kpi("kpi-frag", "Fragility", fmtPlain(overview.avg_fsi_score, 1), infoLine(metricDelta(overview.avg_fsi_score, previous?.avg_fsi_score, "abs", 1, " pts"), overview.fragility_band || "latest FSI where available"));
+  kpi("kpi-hhi", "Trade concentration", fmtPlain(overview.hhi, 3), infoLine(metricDelta(overview.hhi, previous?.hhi, "abs", 3), hhiBand(overview.hhi)));
+  kpi("kpi-frag", "Fragility", fmtPlain(overview.avg_fsi_score, 1), fragBandPill(overview.fragility_band) + infoLine(metricDelta(overview.avg_fsi_score, previous?.avg_fsi_score, "abs", 1, " pts"), overview.fragility_band || "latest FSI where available"));
   kpi("kpi-conflict", "Conflict intensity", fmtPlain(conflict, 1), infoLine(metricDelta(conflict, prevConflict, "abs", 1, " /m"), overview.fatalities_per_million == null ? "violent events / million" : "fatalities / million"));
   kpi("kpi-open", "Trade openness", fmtPct(overview.trade_openness_pct_gdp), infoLine(metricDelta(overview.trade_openness_pct_gdp, previous?.trade_openness_pct_gdp, "pp", 1), "exports + imports / GDP"));
 
@@ -175,7 +175,7 @@ function renderOverview(overview, previous = null) {
   econ("econ-growth", "Real GDP growth", fmtPct(overview.real_gdp_growth_pct), infoLine(metricDelta(overview.real_gdp_growth_pct, previous?.real_gdp_growth_pct, "pp", 1), "year-on-year"));
   econ("econ-inflation", "Inflation", fmtPct(overview.inflation_pct), infoLine(metricDelta(overview.inflation_pct, previous?.inflation_pct, "pp", 1), "avg consumer prices"));
   econ("econ-debt", "Govt debt / GDP", fmtPct(overview.govt_debt_pct_gdp), infoLine(metricDelta(overview.govt_debt_pct_gdp, previous?.govt_debt_pct_gdp, "pp", 1), "GDP-weighted for bloc views"));
-  econ("econ-trade-gdp", "Trade / GDP", fmtPct(overview.trade_openness_pct_gdp), infoLine(metricDelta(overview.trade_openness_pct_gdp, previous?.trade_openness_pct_gdp, "pp", 1), "exports + imports"));
+  econ("econ-trade-gdp", "Fiscal balance", fmtPct(overview.fiscal_balance_pct_gdp), infoLine(metricDelta(overview.fiscal_balance_pct_gdp, previous?.fiscal_balance_pct_gdp, "pp", 1), "net lending / borrowing % GDP"));
   econ("econ-exports-gdp", "Exports / GDP", fmtPct(overview.exports_pct_gdp), infoLine(metricDelta(overview.exports_pct_gdp, previous?.exports_pct_gdp, "pp", 1), "export exposure"));
   econ("econ-imports-gdp", "Imports / GDP", fmtPct(overview.imports_pct_gdp), infoLine(metricDelta(overview.imports_pct_gdp, previous?.imports_pct_gdp, "pp", 1), "import reliance"));
 
@@ -198,6 +198,22 @@ function hhiBand(value) {
   if (n < 0.15) return "diversified partner base";
   if (n <= 0.25) return "moderately concentrated";
   return "highly concentrated";
+}
+
+function fragBandClass(band) {
+  if (!band) return "band-unknown";
+  const b = band.toLowerCase();
+  if (b.includes("very high alert")) return "band-very-high-alert";
+  if (b.includes("high alert")) return "band-high-alert";
+  if (b.includes("alert")) return "band-alert";
+  if (b.includes("elevated warning") || b.includes("high warning")) return "band-elevated-warning";
+  if (b.includes("warning")) return "band-warning";
+  return "band-stable";
+}
+
+function fragBandPill(band) {
+  if (!band) return "";
+  return `<span class="frag-band-pill ${fragBandClass(band)}">${escapeHTML(band)}</span>`;
 }
 
 function riskScores(o) {
@@ -315,9 +331,11 @@ async function loadPartnerTrend(version = State.loadVersion) {
 }
 
 async function loadConcentration(version) {
+  const integrationTitle = document.getElementById("integration-title");
+  if (integrationTitle) integrationTitle.textContent = "Trade openness trend (% of GDP)";
   const integrationSub = document.getElementById("integration-sub");
   if (integrationSub) {
-    integrationSub.textContent = `Trade openness over time · selected year ${State.year} highlighted`;
+    integrationSub.textContent = "Exports + imports as % of GDP — higher signals greater external trade dependency";
   }
 
   const params = new URLSearchParams({
@@ -327,7 +345,7 @@ async function loadConcentration(version) {
   });
   const data = await fetchJSON(`/api/concentration?${params}`);
   if (!isFresh(version)) return;
-  document.getElementById("hhi-title").textContent = State.country ? `${scopeName()} · HHI vs peers` : "Partner concentration (HHI)";
+  document.getElementById("hhi-title").textContent = State.country ? `${scopeName()} · Partner concentration (HHI)` : "Partner concentration (HHI)";
   renderHHI(data, State);
   renderIntegration(data.intra || [], State);
 }
@@ -344,7 +362,7 @@ async function loadGrowth(version) {
     ? "Selected country - 1990 = 100 - nominal current USD"
     : `${State.bloc} members - each country rebased to 1990 = 100`;
   document.getElementById("growth-note").textContent =
-    "Index = total goods trade (exports + imports) / 1990 total goods trade * 100. Log scale is used when outliers would flatten the comparison.";
+    "Source: IMF IMTS/DOTS · 1990 = 100 index · nominal current USD · missing years shown as gaps · log scale when range exceeds 15×";
   renderGrowth(rows, State);
 }
 
@@ -360,8 +378,8 @@ async function loadOperational(version) {
     ? `${scopeName()} · Conflict hotspots`
     : `${scopeName()} · Conflict by country`;
   document.getElementById("conflict-sub").textContent = State.country
-    ? "ACLED - admin1 regions, latest 3-year hotspot window"
-    : "ACLED - member countries, latest 3-year window";
+    ? "ACLED · admin1 regions, fatalities & violent events, latest 3-year hotspot window"
+    : "ACLED · member countries, fatalities & violent events, latest 3-year window";
   renderConflict(data.conflict || []);
   renderFragility(data.fragility || []);
 }

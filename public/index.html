@@ -79,7 +79,11 @@
       <div class="row two">
         <div class="chart-box">
           <h3 id="partners-title">Top 10 trading partners</h3>
-          <p class="sub" id="partners-sub">Trade value, USD billions - selected year</p>
+          <p class="sub" id="partners-sub">Trade value, USD billions · selected year · green = exports, purple = imports</p>
+          <div class="bar-legend">
+            <span><i class="bar-legend-swatch exp"></i>Exports</span>
+            <span><i class="bar-legend-swatch imp"></i>Imports</span>
+          </div>
           <div id="partner-bars" class="partner-bars"></div>
         </div>
 
@@ -101,13 +105,13 @@
       <div class="section-label">Concentration and regional integration</div>
       <div class="row analysis-primary">
         <div class="chart-box">
-          <h3 id="hhi-title">Partner concentration (HHI)</h3>
-          <p class="sub" id="hhi-sub">Dashed line at 0.25 marks highly concentrated</p>
+          <h3 id="hhi-title">Partner concentration (<abbr title="Herfindahl-Hirschman Index: 0 = fully diversified across many partners, 1 = single-partner monopoly">HHI</abbr>)</h3>
+          <p class="sub" id="hhi-sub">0.15 = diversified · 0.25 = highly concentrated · dashed reference lines shown</p>
           <canvas id="hhi-chart"></canvas>
         </div>
         <div class="chart-box">
-          <h3 id="integration-title">Regional integration proxy</h3>
-          <p class="sub" id="integration-sub">Bloc trade openness, total trade as % of GDP</p>
+          <h3 id="integration-title">Trade openness trend (% of GDP)</h3>
+          <p class="sub" id="integration-sub">Exports + imports as % of GDP — higher signals greater external trade dependency</p>
           <canvas id="integration-chart"></canvas>
         </div>
       </div>
@@ -135,19 +139,19 @@
       <div class="row context-row">
         <div class="chart-box">
           <h3 id="conflict-title">Conflict events &amp; fatalities</h3>
-          <p class="sub" id="conflict-sub">ACLED - latest 3-year hotspot window</p>
+          <p class="sub" id="conflict-sub"><abbr title="Armed Conflict Location &amp; Event Data Project">ACLED</abbr> · latest 3-year hotspot window</p>
           <canvas id="conflict-chart"></canvas>
         </div>
 
         <div class="chart-box">
           <h3>Fragility components</h3>
-          <p class="sub">Fund for Peace FSI - latest available</p>
+          <p class="sub"><abbr title="Fund for Peace Fragility States Index: 0 = most stable, 120 = most fragile">FSI</abbr> · pillar scores, latest available</p>
           <canvas id="fragility-chart"></canvas>
         </div>
 
         <div class="chart-box">
           <h3 id="risk-title">Macro-fiscal pressure scorecard</h3>
-          <p class="sub" id="risk-sub">Higher score means more pressure; values are normalized from observed indicators</p>
+          <p class="sub" id="risk-sub">Six indicators normalised 0–100 · higher score = more pressure on that dimension</p>
           <canvas id="risk-chart"></canvas>
         </div>
       </div>
@@ -167,7 +171,7 @@
 
   <div class="toast" id="toast" role="alert" aria-live="assertive"></div>
 
-  <script src="/js/charts.js?v=20260521-annotations2"></script>
-  <script src="/js/app.js?v=20260521-annotations2"></script>
+  <script src="/js/charts.js?v=20260522-dashboard-v2"></script>
+  <script src="/js/app.js?v=20260522-dashboard-v2"></script>
 </body>
 </html>

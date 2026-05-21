@@ -397,21 +397,43 @@ function renderHHI(data, state) {
   if (!rows.length) return chartEmpty("hhi-chart", "No HHI data.");
 
   if (state.country) {
-    const selected = rows.filter(row => row.country_iso3 === state.country || row.analytical_bloc_code === state.bloc);
-    const labels = selected.map(row => row.country_iso3 || row.analytical_bloc_code);
+    // rows is the country's own HHI time-series across all years (API fixed)
+    const years = [...new Set(rows.map(row => row.year))].sort((a, b) => a - b);
+    const name = rows[0]?.country_name || state.country;
     chartStore["hhi-chart"] = new Chart(ctx, {
-      type: "bar",
+      type: "line",
       data: {
-        labels,
-        datasets: [{
-          label: `HHI, ${state.year}`,
-          data: selected.map(row => row.hhi),
-          backgroundColor: selected.map(row => row.country_iso3 === state.country ? COLORS.exports : COLORS.grid),
-        }],
+        labels: years,
+        datasets: [
+          {
+            label: name,
+            data: years.map(year => rows.find(row => row.year === year)?.hhi ?? null),
+            borderColor: COLORS.exports,
+            backgroundColor: COLORS.exports,
+            pointRadius: 0,
+            pointHoverRadius: 4,
+            tension: 0.24,
+            spanGaps: true,
+          },
+          {
+            label: "Highly concentrated (0.25)",
+            data: years.map(() => 0.25),
+            borderColor: COLORS.danger,
+            borderDash: [4, 4],
+            pointRadius: 0,
+            borderWidth: 1.2,
+          },
+          {
+            label: "Diversified threshold (0.15)",
+            data: years.map(() => 0.15),
+            borderColor: "#7ed66d",
+            borderDash: [3, 3],
+            pointRadius: 0,
+            borderWidth: 1,
+          },
+        ],
       },
-      options: barOptions("Country HHI against bloc peers", "HHI", {
-        plugins: { legend: { display: false } },
-      }),
+      options: lineOptions("Partner HHI over time", "HHI"),
     });
     return;
   }
@@ -431,14 +453,24 @@ function renderHHI(data, state) {
         pointRadius: 0,
         tension: 0.24,
         spanGaps: true,
-      })).concat([{
-        label: "High concentration threshold",
-        data: years.map(() => 0.25),
-        borderColor: COLORS.warning,
-        borderDash: [4, 4],
-        pointRadius: 0,
-        borderWidth: 1,
-      }]),
+      })).concat([
+        {
+          label: "Highly concentrated (0.25)",
+          data: years.map(() => 0.25),
+          borderColor: COLORS.danger,
+          borderDash: [4, 4],
+          pointRadius: 0,
+          borderWidth: 1.2,
+        },
+        {
+          label: "Diversified threshold (0.15)",
+          data: years.map(() => 0.15),
+          borderColor: "#7ed66d",
+          borderDash: [3, 3],
+          pointRadius: 0,
+          borderWidth: 1,
+        },
+      ]),
     },
     options: lineOptions("Partner HHI over time", "HHI"),
   });
