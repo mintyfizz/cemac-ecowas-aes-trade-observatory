@@ -87,6 +87,9 @@ function lineOptions(title, yTitle, extra = {}) {
 function barOptions(title, xTitle, extra = {}) {
   return lineOptions(title, xTitle, {
     indexAxis: "y",
+    // For horizontal bars the index runs along y, so hover must use axis:"y"
+    // otherwise Chart.js scans by x-position and the tooltip fires at wrong rows.
+    interaction: { mode: "index", axis: "y", intersect: false },
     scales: {
       x: { grid: { color: COLORS.grid }, ticks: { color: COLORS.text }, title: { display: !!xTitle, text: xTitle, color: COLORS.text } },
       y: { grid: { color: "rgba(0,0,0,0)" }, ticks: { color: COLORS.text } },
