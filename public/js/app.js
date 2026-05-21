@@ -16,6 +16,7 @@ const State = {
   meta: null,
   mapRows: [],
   loadVersion: 0,
+  productsFlow: "export",
 };
 
 const METRIC_META = {
@@ -390,6 +391,33 @@ async function loadHealth(version) {
   renderHealth(data.panels || []);
 }
 
+async function loadProducts(version) {
+  const titleEl = document.getElementById("products-title");
+  const subEl   = document.getElementById("products-sub");
+  const noteEl  = document.getElementById("products-note");
+  if (titleEl) titleEl.textContent = `${scopeName()} · Top ${State.productsFlow} sectors (HS2)`;
+  const params = new URLSearchParams({
+    bloc: State.bloc,
+    year: State.year,
+    flow: State.productsFlow,
+    ...(State.country ? { country: State.country } : {}),
+  });
+  const data = await fetchJSON(`/api/products?${params}`);
+  if (!isFresh(version)) return;
+  if (noteEl) noteEl.textContent = data.coverage_note || "";
+  const el = document.getElementById("products-chart");
+  if (!data.available) {
+    destroyChart("products-chart");
+    if (el) el.style.display = "none";
+    if (subEl) subEl.textContent = data.coverage_note || "Product data not available for this selection.";
+    if (noteEl) noteEl.textContent = "";
+    return;
+  }
+  if (el) el.style.display = "";
+  if (subEl) subEl.textContent = data.coverage_note || `UN Comtrade · ${State.year}`;
+  renderProducts(data.rows, State.productsFlow);
+}
+
 async function loadAll() {
   const version = ++State.loadVersion;
   updateToolbarActive();
@@ -403,6 +431,7 @@ async function loadAll() {
     loadConcentration(version),
     loadGrowth(version),
     loadOperational(version),
+    loadProducts(version),
     loadHealth(version),
   ]);
   const failed = results.find(r => r.status === "rejected");
@@ -454,6 +483,14 @@ function attachListeners() {
   document.getElementById("p2-select").addEventListener("change", event => {
     State.p2 = event.target.value;
     loadPartnerTrend();
+  });
+
+  document.getElementById("flow-toggle")?.addEventListener("click", event => {
+    const btn = event.target.closest(".flow-btn");
+    if (!btn) return;
+    State.productsFlow = btn.dataset.flow;
+    document.querySelectorAll(".flow-btn").forEach(b => b.classList.toggle("active", b === btn));
+    loadProducts(State.loadVersion);
   });
 }
 

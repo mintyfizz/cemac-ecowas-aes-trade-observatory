@@ -814,3 +814,69 @@ function renderHealth(rows) {
     </div>
   `).join("");
 }
+
+function renderProducts(rows, flow) {
+  const el = canvas("products-chart");
+  if (!el) return;
+
+  const top = rows.slice(0, 12).reverse();
+  const color = flow === "export" ? COLORS.exports : COLORS.imports;
+  const barColor = color + "cc";
+  const borderColor = color;
+
+  const labels = top.map(r => {
+    const desc = r.hs2_description || `HS ${r.hs2_code}`;
+    return desc.length > 50 ? desc.slice(0, 47) + "…" : desc;
+  });
+  const values = top.map(r => r.trade_value_billions_usd ?? 0);
+  const shares = top.map(r => r.hs2_share_pct ?? 0);
+  const codes  = top.map(r => r.hs2_code);
+  const descs  = top.map(r => r.hs2_description || `HS ${r.hs2_code}`);
+
+  new Chart(el, {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: barColor,
+        borderColor,
+        borderWidth: 1,
+        borderRadius: 3,
+      }],
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", axis: "y", intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: ctx => `HS ${codes[ctx[0].dataIndex]}: ${descs[ctx[0].dataIndex]}`,
+            label: ctx => {
+              const val = ctx.parsed.x;
+              const share = shares[ctx.dataIndex];
+              return ` $${val.toFixed(2)}B  (${share.toFixed(1)}%)`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { color: "rgba(255,255,255,0.06)" },
+          ticks: {
+            color: "#aaa",
+            font: { size: 11 },
+            callback: value => `$${value}B`,
+          },
+        },
+        y: {
+          grid: { display: false },
+          ticks: { color: "#ccc", font: { size: 11 } },
+        },
+      },
+    },
+  });
+}

@@ -657,6 +657,99 @@ async def get_operational(
         raise HTTPException(503, f"Data not available: {exc}") from exc
 
 
+@app.get("/api/products")
+async def get_products(
+    bloc: str = Query("CEMAC"),
+    year: int = Query(2024),
+    country: str | None = Query(None),
+    flow: str = Query("export"),
+) -> dict:
+    """Top HS2 trade sectors by value for the selected scope and year."""
+    try:
+        _validate_bloc(bloc)
+        _validate_country(country)
+        _validate_year(year)
+        if flow not in ("export", "import"):
+            raise HTTPException(400, "flow must be 'export' or 'import'")
+
+        if country:
+            rows = dbq(
+                f"""
+                SELECT hs2_code, hs2_description,
+                       trade_value_billions_usd, hs2_share_pct
+                FROM {CATALOG}.gold.product_trade_hs2
+                WHERE reporter_iso3 = ? AND year = ? AND flow_type = ?
+                ORDER BY trade_value_billions_usd DESC NULLS LAST
+                LIMIT 15
+                """,
+                [country, year, flow],
+            )
+            if not rows:
+                return {
+                    "available": False,
+                    "coverage_note": f"No Comtrade product data for {country} · {year}",
+                    "rows": [],
+                }
+            return {
+                "available": True,
+                "coverage_note": f"UN Comtrade · {COUNTRY_NAMES.get(country, country)} · {year}",
+                "rows": rows,
+            }
+        else:
+            members = BLOCS[bloc]
+            placeholders = ", ".join(["?"] * len(members))
+            rows = dbq(
+                f"""
+                WITH agg AS (
+                    SELECT hs2_code, hs2_description,
+                           SUM(trade_value_billions_usd) AS trade_value_billions_usd
+                    FROM {CATALOG}.gold.product_trade_hs2
+                    WHERE reporter_iso3 IN ({placeholders})
+                      AND year = ?
+                      AND flow_type = ?
+                    GROUP BY hs2_code, hs2_description
+                ),
+                grand AS (
+                    SELECT SUM(trade_value_billions_usd) AS total FROM agg
+                )
+                SELECT a.hs2_code, a.hs2_description,
+                       a.trade_value_billions_usd,
+                       ROUND(100.0 * a.trade_value_billions_usd / NULLIF(g.total, 0), 1)
+                           AS hs2_share_pct
+                FROM agg a CROSS JOIN grand g
+                ORDER BY a.trade_value_billions_usd DESC NULLS LAST
+                LIMIT 15
+                """,
+                [*members, year, flow],
+            )
+            n_reporters_result = dbq(
+                f"""
+                SELECT COUNT(DISTINCT reporter_iso3) AS n_reporters
+                FROM {CATALOG}.gold.product_trade_hs2
+                WHERE reporter_iso3 IN ({placeholders})
+                  AND year = ?
+                  AND flow_type = ?
+                """,
+                [*members, year, flow],
+            )
+            n_reporters = (n_reporters_result[0].get("n_reporters") or 0) if n_reporters_result else 0
+            coverage_note = (
+                f"UN Comtrade · {n_reporters} of {len(members)} {bloc} reporters "
+                f"with coverage · {year}"
+            )
+            if not rows:
+                return {"available": False, "coverage_note": coverage_note, "rows": []}
+            return {"available": True, "coverage_note": coverage_note, "rows": rows}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        return {
+            "available": False,
+            "coverage_note": f"Product data unavailable: {exc}",
+            "rows": [],
+        }
+
+
 @app.get("/api/health")
 async def health() -> dict:
     try:

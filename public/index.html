@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CEMAC - ECOWAS - AES Trade Observatory</title>
-  <link rel="stylesheet" href="/css/styles.css" />
+  <link rel="stylesheet" href="/css/styles.css?v=20260521-products-v1" />
   <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
@@ -134,6 +134,24 @@
       </div>
     </section>
 
+    <section class="section" id="section-products">
+      <div class="section-label">Product trade structure</div>
+      <div class="chart-box">
+        <div class="products-header">
+          <div>
+            <h3 id="products-title">Top export sectors (HS2)</h3>
+            <p class="sub" id="products-sub">UN Comtrade · trade value, USD billions · reporter-submitted data only</p>
+          </div>
+          <div class="flow-toggle" id="flow-toggle">
+            <button class="flow-btn active" data-flow="export" type="button">Exports</button>
+            <button class="flow-btn" data-flow="import" type="button">Imports</button>
+          </div>
+        </div>
+        <canvas id="products-chart"></canvas>
+        <p class="note" id="products-note"></p>
+      </div>
+    </section>
+
     <section class="section" id="section-operational">
       <div class="section-label">Operational context</div>
       <div class="row context-row">
@@ -171,7 +189,7 @@
 
   <div class="toast" id="toast" role="alert" aria-live="assertive"></div>
 
-  <script src="/js/charts.js?v=20260522-dashboard-v3"></script>
-  <script src="/js/app.js?v=20260522-dashboard-v3"></script>
+  <script src="/js/charts.js?v=20260521-products-v1"></script>
+  <script src="/js/app.js?v=20260521-products-v1"></script>
 </body>
 </html>

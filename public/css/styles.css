@@ -770,6 +770,54 @@ button, select {
 
 /* ─────────────────────────────────────────────────────────────────────────── */
 
+/* Products section */
+.products-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.products-header > div:first-child { flex: 1 1 0; }
+
+.flow-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.flow-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 14px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.flow-btn:hover { background: var(--surface-3); color: var(--text); }
+
+.flow-btn.active[data-flow="export"] {
+  background: rgba(29, 158, 117, 0.15);
+  color: var(--exports);
+  font-weight: 600;
+}
+
+.flow-btn.active[data-flow="import"] {
+  background: rgba(127, 119, 221, 0.15);
+  color: var(--imports);
+  font-weight: 600;
+}
+
+#section-products .chart-box canvas { height: 420px !important; }
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+
 .toast {
   position: fixed;
   bottom: 24px;
