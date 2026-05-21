@@ -157,6 +157,14 @@ function fmtNumber(value, digits = 0) {
     : "--";
 }
 
+function hhiDescription(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "no concentration score";
+  if (n < 0.15) return "diversified";
+  if (n <= 0.25) return "moderately concentrated";
+  return "highly concentrated";
+}
+
 function metricValue(row, metric) {
   if (!row) return null;
   return row.value == null ? null : Number(row.value);
@@ -453,12 +461,27 @@ function renderIntegration(rows, state) {
         borderColor: blocColor(bloc),
         backgroundColor: blocColor(bloc),
         borderWidth: bloc === state.bloc ? 2.6 : 1.2,
-        pointRadius: 0,
+        pointRadius: years.map(year => year === state.year ? (bloc === state.bloc ? 4 : 3) : 0),
+        pointHoverRadius: 5,
         tension: 0.24,
         spanGaps: true,
       })),
     },
-    options: lineOptions("Trade openness proxy (% of GDP)", "Trade / GDP (%)"),
+    options: lineOptions("Trade openness proxy (% of GDP)", "Trade / GDP (%)", {
+      plugins: {
+        legend: { position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 3, usePointStyle: true, pointStyle: "line" } },
+        title: { display: true, text: "Trade openness proxy (% of GDP)", color: COLORS.text, font: { size: 12, weight: "500" } },
+        tooltip: {
+          backgroundColor: "#11120f",
+          borderColor: "#55564f",
+          borderWidth: 1,
+          callbacks: {
+            title: items => items.length ? `Year ${items[0].label}` : "",
+            label: item => `${item.dataset.label}: ${fmtPct(item.parsed.y)}`,
+          },
+        },
+      },
+    }),
   });
 }
 
@@ -582,18 +605,27 @@ function renderStructureTree(overview) {
   const importVal = Number(overview.imports_billions_usd) || 0;
   const total = Math.max(exportVal + importVal, 1);
   const balance = Number(overview.trade_balance_billions_usd);
-  const cells = [
-    { name: "Exports", val: shortMoneyB(exportVal), pct: exportVal / total, cls: "large", color: "#0f6e56" },
-    { name: "Imports", val: shortMoneyB(importVal), pct: importVal / total, cls: "large", color: "#6f65c8" },
-    { name: "Trade/GDP", val: fmtPct(overview.trade_openness_pct_gdp), pct: 0.4, cls: "medium", color: "#185fa5" },
-    { name: "Top partner", val: fmtPct(overview.top_partner_share_pct), pct: 0.28, cls: "medium", color: "#ba7517" },
-    { name: "Balance", val: Number.isFinite(balance) ? shortMoneyB(balance) : "--", pct: 0.2, cls: "small", color: balance >= 0 ? "#1d9e75" : "#ef7668" },
-    { name: "HHI", val: fmtPlain(overview.hhi, 3), pct: 0.15, cls: "small", color: "#507d71" },
+  const gdp = Number(overview.gdp_current_usd_billions);
+  const exportShare = total > 0 ? exportVal / total * 100 : null;
+  const importShare = total > 0 ? importVal / total * 100 : null;
+  const balancePctGdp = Number.isFinite(balance) && Number.isFinite(gdp) && gdp !== 0 ? balance / gdp * 100 : null;
+  const openness = Number(overview.trade_openness_pct_gdp);
+  const opennessBand = Number.isFinite(openness)
+    ? (openness >= 100 ? "highly open" : openness >= 60 ? "moderately open" : "relatively closed")
+    : "no openness score";
+  const cards = [
+    { label: "Exports", value: shortMoneyB(exportVal), desc: `${fmtPct(overview.exports_pct_gdp)} of GDP · ${fmtPct(exportShare)} of trade`, tone: "good" },
+    { label: "Imports", value: shortMoneyB(importVal), desc: `${fmtPct(overview.imports_pct_gdp)} of GDP · ${fmtPct(importShare)} of trade`, tone: "accent" },
+    { label: "Trade balance", value: Number.isFinite(balance) ? shortMoneyB(balance) : "--", desc: `${fmtPct(balancePctGdp)} of GDP`, tone: balance >= 0 ? "good" : "bad" },
+    { label: "Openness", value: fmtPct(overview.trade_openness_pct_gdp), desc: opennessBand, tone: "accent" },
+    { label: "Main partner share", value: fmtPct(overview.top_partner_share_pct), desc: `${escapeHTML(overview.main_partner_iso3 || "--")} share of total trade`, tone: "accent" },
+    { label: "Partner concentration", value: fmtPlain(overview.hhi, 3), desc: hhiDescription(overview.hhi), tone: "accent" },
   ];
-  el.innerHTML = cells.map(cell => `
-    <div class="tree-cell ${cell.cls}" style="background:${cell.color}">
-      <div class="name">${escapeHTML(cell.name)}</div>
-      <div class="val">${escapeHTML(cell.val)}</div>
+  el.innerHTML = cards.map(card => `
+    <div class="exposure-card ${card.tone}">
+      <div class="lbl">${escapeHTML(card.label)}</div>
+      <div class="val">${escapeHTML(card.value)}</div>
+      <div class="desc">${card.desc}</div>
     </div>
   `).join("");
 }
@@ -682,20 +714,53 @@ function radarOptions(title, max) {
 function renderRiskRadar(scores, label) {
   const ctx = canvas("risk-chart");
   if (!ctx) return;
-  const labels = ["Debt", "Inflation", "CA pressure", "Partner HHI", "Fragility", "Conflict"];
+  const rows = Array.isArray(scores) ? scores : [];
+  if (!rows.length) return chartEmpty("risk-chart", "No pressure-score data.");
   chartStore["risk-chart"] = new Chart(ctx, {
-    type: "radar",
+    type: "bar",
     data: {
-      labels,
+      labels: rows.map(row => row.label),
       datasets: [{
         label,
-        data: labels.map(key => scores[key] || 0),
-        borderColor: COLORS.warning,
-        backgroundColor: "rgba(247,210,93,0.18)",
-        pointBackgroundColor: COLORS.warning,
+        data: rows.map(row => row.score ?? null),
+        backgroundColor: rows.map(row => {
+          const score = Number(row.score);
+          if (!Number.isFinite(score)) return COLORS.grid;
+          if (score >= 70) return COLORS.danger;
+          if (score >= 40) return COLORS.warning;
+          return COLORS.exports;
+        }),
+        borderWidth: 0,
       }],
     },
-    options: radarOptions("Relative risk pressure (0-100)", 100),
+    options: barOptions("Pressure score (0-100)", "Normalized pressure", {
+      scales: {
+        x: {
+          min: 0,
+          max: 100,
+          grid: { color: COLORS.grid },
+          ticks: { color: COLORS.text },
+          title: { display: true, text: "Higher = more pressure", color: COLORS.text },
+        },
+        y: { grid: { color: "rgba(0,0,0,0)" }, ticks: { color: COLORS.text } },
+      },
+      plugins: {
+        legend: { display: false },
+        title: { display: true, text: "Pressure score (0-100)", color: COLORS.text, font: { size: 12, weight: "500" } },
+        tooltip: {
+          backgroundColor: "#11120f",
+          borderColor: "#55564f",
+          borderWidth: 1,
+          callbacks: {
+            label: item => `Score: ${fmtPlain(item.parsed.x, 0)} / 100`,
+            afterLabel: item => {
+              const row = rows[item.dataIndex];
+              return [`Actual: ${row.actual}`, row.detail].filter(Boolean);
+            },
+          },
+        },
+      },
+    }),
   });
 }
 

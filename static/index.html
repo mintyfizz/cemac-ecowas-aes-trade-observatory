@@ -106,8 +106,8 @@
           <canvas id="hhi-chart"></canvas>
         </div>
         <div class="chart-box">
-          <h3>Regional integration proxy</h3>
-          <p class="sub">Bloc trade openness, total trade as % of GDP</p>
+          <h3 id="integration-title">Regional integration proxy</h3>
+          <p class="sub" id="integration-sub">Bloc trade openness, total trade as % of GDP</p>
           <canvas id="integration-chart"></canvas>
         </div>
       </div>
@@ -123,9 +123,9 @@
           <p class="note" id="growth-note">Index = total goods trade / 1990 total goods trade * 100. Nominal current USD.</p>
         </div>
         <div class="chart-box tree-box">
-          <h3>Trade exposure mix</h3>
-          <p class="sub">Exports, imports, openness, balance and partner concentration</p>
-          <div class="tree" id="structure-tree"></div>
+          <h3>Trade exposure diagnostics</h3>
+          <p class="sub">Exports, imports, balance and concentration in context</p>
+          <div class="exposure-panel" id="structure-tree"></div>
         </div>
       </div>
     </section>
@@ -146,8 +146,8 @@
         </div>
 
         <div class="chart-box">
-          <h3>Macro-fiscal risk scorecard</h3>
-          <p class="sub">Normalized from loaded WEO, trade, ACLED, and FSI fields</p>
+          <h3 id="risk-title">Macro-fiscal pressure scorecard</h3>
+          <p class="sub" id="risk-sub">Higher score means more pressure; values are normalized from observed indicators</p>
           <canvas id="risk-chart"></canvas>
         </div>
       </div>
@@ -159,13 +159,15 @@
     </section>
 
     <footer class="dash-footer">
-      CEMAC - ECOWAS - AES Trade Observatory · IMF IMTS/DOTS 1990-2024 · IMF WEO · ACLED · Fund for Peace FSI
+      CEMAC - ECOWAS - AES Trade Observatory · Nathan Thomas Gatse ·
+      <a href="https://github.com/mintyfizz/cemac-ecowas-aes-trade-observatory" target="_blank" rel="noopener">GitHub: mintyfizz</a>
+      · IMF IMTS/DOTS 1990-2024 · IMF WEO · ACLED · Fund for Peace FSI
     </footer>
   </main>
 
   <div class="toast" id="toast" role="alert" aria-live="assertive"></div>
 
-  <script src="js/charts.js?v=20260520-growth-hover-stable"></script>
-  <script src="js/app_static.js?v=20260520-growth-hover-stable"></script>
+  <script src="js/charts.js?v=20260521-annotations2"></script>
+  <script src="js/app_static.js?v=20260521-annotations2"></script>
 </body>
 </html>

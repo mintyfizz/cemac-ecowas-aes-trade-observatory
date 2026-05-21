@@ -75,6 +75,33 @@ function fmtPop(value) {
   return `${n.toFixed(n >= 10 ? 1 : 2)}M`;
 }
 
+function deltaBadge(value, digits = 1, suffix = "") {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return "";
+  const tone = n > 0 ? "up" : n < 0 ? "down" : "flat";
+  const arrow = n > 0 ? "▲" : n < 0 ? "▼" : "•";
+  return `<span class="delta-badge ${tone}">${arrow} ${Math.abs(n).toFixed(digits)}${suffix}</span>`;
+}
+
+function metricDelta(current, previous, kind = "pct", digits = 1, suffix = "") {
+  const curr = numberOrNull(current);
+  const prev = numberOrNull(previous);
+  if (curr == null || prev == null) return "";
+  if (kind === "pct") {
+    if (prev === 0) return "";
+    return deltaBadge(((curr - prev) / Math.abs(prev)) * 100, digits, "% YoY");
+  }
+  if (kind === "pp") {
+    return deltaBadge(curr - prev, digits, " pp YoY");
+  }
+  return deltaBadge(curr - prev, digits, `${suffix} YoY`);
+}
+
+function infoLine(deltaHtml, text) {
+  const note = text ? `<span class="note-fragment">${escapeHTML(text)}</span>` : "";
+  return `${deltaHtml || ""}${note}`;
+}
+
 function kpi(id, label, value, note, tone = "flat") {
   const el = document.getElementById(id);
   if (!el) return;
@@ -82,7 +109,7 @@ function kpi(id, label, value, note, tone = "flat") {
   el.innerHTML = `
     <div class="lbl">${escapeHTML(label)}</div>
     <div class="val">${escapeHTML(value)}</div>
-    <div class="delta ${tone}">${escapeHTML(note || "")}</div>
+    <div class="delta ${tone}">${note || ""}</div>
   `;
 }
 
@@ -93,7 +120,7 @@ function econ(id, label, value, desc) {
   el.innerHTML = `
     <div class="lbl">${escapeHTML(label)}</div>
     <div class="val">${escapeHTML(value)}</div>
-    <div class="desc">${escapeHTML(desc || "")}</div>
+    <div class="desc">${desc || ""}</div>
   `;
 }
 
@@ -126,27 +153,31 @@ function updateCrumb() {
   }
 }
 
-function renderOverview(overview) {
+function renderOverview(overview, previous = null) {
   const partner = overview.main_partner_iso3 || "--";
   const partnerName = overview.main_partner_name || partner;
   const conflict = overview.fatalities_per_million ?? overview.violent_events_per_million;
+  const prevConflict = previous ? (previous.fatalities_per_million ?? previous.violent_events_per_million) : null;
+  const partnerNote = previous?.main_partner_iso3 && previous.main_partner_iso3 !== partner
+    ? infoLine("", `was ${previous.main_partner_iso3} in ${State.year - 1}`)
+    : infoLine(metricDelta(overview.top_partner_share_pct, previous?.top_partner_share_pct, "pp", 1), `${partnerName} · ${fmtPct(overview.top_partner_share_pct)} of trade`);
 
-  kpi("kpi-trade", "Total trade", shortMoneyB(overview.total_trade_billions_usd), `USD billions, ${State.year}`);
-  kpi("kpi-partner", "Main partner", partner, `${partnerName} · ${fmtPct(overview.top_partner_share_pct)} of trade`);
-  kpi("kpi-hhi", "Partner HHI", fmtPlain(overview.hhi, 3), hhiBand(overview.hhi));
-  kpi("kpi-frag", "Fragility", fmtPlain(overview.avg_fsi_score, 1), overview.fragility_band || "latest FSI where available");
-  kpi("kpi-conflict", "Conflict intensity", fmtPlain(conflict, 1), overview.fatalities_per_million == null ? "violent events / million" : "fatalities / million");
-  kpi("kpi-open", "Trade openness", fmtPct(overview.trade_openness_pct_gdp), "exports + imports / GDP");
+  kpi("kpi-trade", "Total trade", shortMoneyB(overview.total_trade_billions_usd), infoLine(metricDelta(overview.total_trade_billions_usd, previous?.total_trade_billions_usd, "pct", 1), `USD billions, ${State.year}`));
+  kpi("kpi-partner", "Main partner", partner, partnerNote);
+  kpi("kpi-hhi", "Partner HHI", fmtPlain(overview.hhi, 3), infoLine(metricDelta(overview.hhi, previous?.hhi, "abs", 3), hhiBand(overview.hhi)));
+  kpi("kpi-frag", "Fragility", fmtPlain(overview.avg_fsi_score, 1), infoLine(metricDelta(overview.avg_fsi_score, previous?.avg_fsi_score, "abs", 1, " pts"), overview.fragility_band || "latest FSI where available"));
+  kpi("kpi-conflict", "Conflict intensity", fmtPlain(conflict, 1), infoLine(metricDelta(conflict, prevConflict, "abs", 1, " /m"), overview.fatalities_per_million == null ? "violent events / million" : "fatalities / million"));
+  kpi("kpi-open", "Trade openness", fmtPct(overview.trade_openness_pct_gdp), infoLine(metricDelta(overview.trade_openness_pct_gdp, previous?.trade_openness_pct_gdp, "pp", 1), "exports + imports / GDP"));
 
-  econ("econ-gdp", "GDP", shortMoneyB(overview.gdp_current_usd_billions), "current USD");
-  econ("econ-pop", "Population", fmtPop(overview.population_millions), "millions");
-  econ("econ-gdp-pc", "GDP per capita", fmtCurrency(overview.gdp_per_capita_usd), "USD, current");
-  econ("econ-growth", "Real GDP growth", fmtPct(overview.real_gdp_growth_pct), "year-on-year");
-  econ("econ-inflation", "Inflation", fmtPct(overview.inflation_pct), "avg consumer prices");
-  econ("econ-debt", "Govt debt / GDP", fmtPct(overview.govt_debt_pct_gdp), "GDP-weighted for bloc views");
-  econ("econ-trade-gdp", "Trade / GDP", fmtPct(overview.trade_openness_pct_gdp), "exports + imports");
-  econ("econ-exports-gdp", "Exports / GDP", fmtPct(overview.exports_pct_gdp), "export exposure");
-  econ("econ-imports-gdp", "Imports / GDP", fmtPct(overview.imports_pct_gdp), "import reliance");
+  econ("econ-gdp", "GDP", shortMoneyB(overview.gdp_current_usd_billions), infoLine(metricDelta(overview.gdp_current_usd_billions, previous?.gdp_current_usd_billions, "pct", 1), "current USD"));
+  econ("econ-pop", "Population", fmtPop(overview.population_millions), infoLine(metricDelta(overview.population_millions, previous?.population_millions, "pct", 1), "millions"));
+  econ("econ-gdp-pc", "GDP per capita", fmtCurrency(overview.gdp_per_capita_usd), infoLine(metricDelta(overview.gdp_per_capita_usd, previous?.gdp_per_capita_usd, "pct", 1), "USD, current"));
+  econ("econ-growth", "Real GDP growth", fmtPct(overview.real_gdp_growth_pct), infoLine(metricDelta(overview.real_gdp_growth_pct, previous?.real_gdp_growth_pct, "pp", 1), "year-on-year"));
+  econ("econ-inflation", "Inflation", fmtPct(overview.inflation_pct), infoLine(metricDelta(overview.inflation_pct, previous?.inflation_pct, "pp", 1), "avg consumer prices"));
+  econ("econ-debt", "Govt debt / GDP", fmtPct(overview.govt_debt_pct_gdp), infoLine(metricDelta(overview.govt_debt_pct_gdp, previous?.govt_debt_pct_gdp, "pp", 1), "GDP-weighted for bloc views"));
+  econ("econ-trade-gdp", "Trade / GDP", fmtPct(overview.trade_openness_pct_gdp), infoLine(metricDelta(overview.trade_openness_pct_gdp, previous?.trade_openness_pct_gdp, "pp", 1), "exports + imports"));
+  econ("econ-exports-gdp", "Exports / GDP", fmtPct(overview.exports_pct_gdp), infoLine(metricDelta(overview.exports_pct_gdp, previous?.exports_pct_gdp, "pp", 1), "export exposure"));
+  econ("econ-imports-gdp", "Imports / GDP", fmtPct(overview.imports_pct_gdp), infoLine(metricDelta(overview.imports_pct_gdp, previous?.imports_pct_gdp, "pp", 1), "import reliance"));
 
   const note = document.getElementById("econ-note");
   if (note) {
@@ -170,24 +201,30 @@ function hhiBand(value) {
 }
 
 function riskScores(o) {
-  const debt = clamp((numberOrNull(o.govt_debt_pct_gdp) || 0) / 100 * 100);
-  const infl = clamp((numberOrNull(o.inflation_pct) || 0) / 25 * 100);
-  const ca = clamp(Math.abs(numberOrNull(o.current_account_pct_gdp) || 0) / 20 * 100);
-  const hhi = clamp((numberOrNull(o.hhi) || 0) / 0.35 * 100);
-  const frag = clamp((numberOrNull(o.avg_fsi_score) || 0) / 120 * 100);
-  const conflict = clamp((numberOrNull(o.fatalities_per_million) || 0) / 200 * 100);
-  return {
-    Debt: debt,
-    Inflation: infl,
-    "CA pressure": ca,
-    "Partner HHI": hhi,
-    Fragility: frag,
-    Conflict: conflict,
-  };
+  const debt = numberOrNull(o.govt_debt_pct_gdp);
+  const fiscal = numberOrNull(o.fiscal_balance_pct_gdp);
+  const inflation = numberOrNull(o.inflation_pct);
+  const currentAccount = numberOrNull(o.current_account_pct_gdp);
+  const fragility = numberOrNull(o.avg_fsi_score);
+  const conflict = numberOrNull(o.fatalities_per_million);
+  return [
+    { label: "Debt burden", score: rangeScore(debt, 40, 100), actual: fmtPct(debt), detail: "gross government debt / GDP" },
+    { label: "Fiscal deficit", score: rangeScore(fiscal == null ? null : -fiscal, 3, 10), actual: fmtPct(fiscal), detail: "net lending / borrowing, % GDP" },
+    { label: "Inflation", score: rangeScore(inflation, 5, 25), actual: fmtPct(inflation), detail: "consumer prices, annual %" },
+    { label: "External deficit", score: rangeScore(currentAccount == null ? null : -currentAccount, 3, 20), actual: fmtPct(currentAccount), detail: "current account balance / GDP" },
+    { label: "Fragility", score: fragility == null ? null : clamp(fragility / 120 * 100), actual: fmtPlain(fragility, 1), detail: "Fund for Peace FSI, latest available" },
+    { label: "Conflict", score: conflict == null ? null : clamp(conflict / 200 * 100), actual: `${fmtPlain(conflict, 1)} /m`, detail: "fatalities per million" },
+  ];
 }
 
 function clamp(value) {
   return Math.max(0, Math.min(100, value));
+}
+
+function rangeScore(value, low, high) {
+  const n = numberOrNull(value);
+  if (n == null) return null;
+  return clamp((n - low) / (high - low) * 100);
 }
 
 function setMapTitle() {
@@ -210,9 +247,17 @@ async function loadOverview(version) {
     year: State.year,
     ...(State.country ? { country: State.country } : {}),
   });
-  const overview = await fetchJSON(`/api/overview?${params}`);
+  const previousParams = new URLSearchParams({
+    bloc: State.bloc,
+    year: Math.max(1990, State.year - 1),
+    ...(State.country ? { country: State.country } : {}),
+  });
+  const [overview, previous] = await Promise.all([
+    fetchJSON(`/api/overview?${params}`),
+    State.year > 1990 ? fetchJSON(`/api/overview?${previousParams}`) : Promise.resolve(null),
+  ]);
   if (!isFresh(version)) return;
-  renderOverview(overview);
+  renderOverview(overview, previous);
 }
 
 async function loadMap(version) {
@@ -225,6 +270,13 @@ async function loadMap(version) {
 }
 
 async function loadPartners(version) {
+  const partnerTitle = document.getElementById("partners-title");
+  const partnerSub = document.getElementById("partners-sub");
+  const partnerBars = document.getElementById("partner-bars");
+  if (partnerTitle) partnerTitle.textContent = `${scopeName()} · Top 10 trading partners`;
+  if (partnerSub) partnerSub.textContent = `Trade value, USD billions · ${State.year} · ranked within selected scope`;
+  if (partnerBars) partnerBars.innerHTML = `<div class="empty-state">Loading ${State.year} partner data...</div>`;
+
   const params = new URLSearchParams({
     bloc: State.bloc,
     year: State.year,
@@ -233,8 +285,6 @@ async function loadPartners(version) {
   const rows = await fetchJSON(`/api/partners?${params}`);
   if (!isFresh(version)) return;
 
-  document.getElementById("partners-title").textContent = `${scopeName()} · Top 10 trading partners`;
-  document.getElementById("partners-sub").textContent = `Trade value, USD billions · ${State.year}`;
   renderPartnerBars(rows);
 
   const p1El = document.getElementById("p1-select");
@@ -265,6 +315,11 @@ async function loadPartnerTrend(version = State.loadVersion) {
 }
 
 async function loadConcentration(version) {
+  const integrationSub = document.getElementById("integration-sub");
+  if (integrationSub) {
+    integrationSub.textContent = `Trade openness over time · selected year ${State.year} highlighted`;
+  }
+
   const params = new URLSearchParams({
     bloc: State.bloc,
     year: State.year,

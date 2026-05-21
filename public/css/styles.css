@@ -274,6 +274,50 @@ button, select {
   margin-top: 2px;
 }
 
+.kpi .delta,
+.econ-card .desc {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+
+.delta-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border-radius: 999px;
+  padding: 1px 6px;
+  font-size: 10.5px;
+  line-height: 1.35;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.delta-badge.up {
+  color: var(--success);
+  background: rgba(126, 214, 109, 0.12);
+  border: 0.5px solid rgba(126, 214, 109, 0.32);
+}
+
+.delta-badge.down {
+  color: var(--danger);
+  background: rgba(239, 118, 104, 0.12);
+  border: 0.5px solid rgba(239, 118, 104, 0.32);
+}
+
+.delta-badge.flat {
+  color: var(--muted);
+  background: rgba(170, 165, 154, 0.10);
+  border: 0.5px solid rgba(170, 165, 154, 0.22);
+}
+
+.note-fragment {
+  color: var(--muted);
+}
+
 .flat {
   color: var(--muted);
 }
@@ -559,6 +603,62 @@ button, select {
   grid-row: span 1;
 }
 
+.exposure-panel {
+  min-height: 276px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.exposure-card {
+  background: var(--surface-2);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 11px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 84px;
+}
+
+.exposure-card.wide {
+  grid-column: 1 / -1;
+  min-height: 70px;
+}
+
+.exposure-card .lbl {
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  font-weight: 650;
+}
+
+.exposure-card .val {
+  color: var(--text);
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1.1;
+  margin: 4px 0 3px;
+}
+
+.exposure-card .desc {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.exposure-card.good {
+  border-color: rgba(126, 214, 109, 0.28);
+}
+
+.exposure-card.bad {
+  border-color: rgba(239, 118, 104, 0.32);
+}
+
+.exposure-card.accent {
+  border-color: rgba(247, 210, 93, 0.25);
+}
+
 .health-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -650,6 +750,17 @@ button, select {
   border-top: 0.5px solid var(--border);
 }
 
+.dash-footer a {
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 0.5px solid rgba(170, 165, 154, 0.35);
+}
+
+.dash-footer a:hover {
+  color: var(--text-2);
+  border-bottom-color: var(--text-2);
+}
+
 @media (max-width: 1100px) {
   body {
     display: block;
@@ -726,7 +837,8 @@ button, select {
     grid-template-columns: 68px minmax(0, 1fr) 40px;
   }
 
-  .tree {
+  .tree,
+  .exposure-panel {
     grid-template-columns: repeat(2, 1fr);
     grid-template-rows: none;
     height: auto;
@@ -735,7 +847,9 @@ button, select {
   .tree-cell,
   .tree-cell.large,
   .tree-cell.medium,
-  .tree-cell.small {
+  .tree-cell.small,
+  .exposure-card,
+  .exposure-card.wide {
     grid-column: span 1;
     grid-row: span 1;
     min-height: 86px;

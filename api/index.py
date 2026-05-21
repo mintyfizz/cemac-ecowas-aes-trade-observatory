@@ -375,6 +375,11 @@ async def get_partners(
                     WHERE analytical_bloc_code = ? AND year = ?
                       AND counterpart_iso3 RLIKE '^[A-Z]{{3}}$'
                     GROUP BY counterpart_iso3
+                ),
+                scope_total AS (
+                    SELECT SUM(total_trade_billions_usd) AS total_trade_billions_usd
+                    FROM {CATALOG}.gold.dashboard_country_timeseries
+                    WHERE analytical_bloc_code = ? AND year = ?
                 )
                 SELECT
                     counterpart_iso3,
@@ -382,14 +387,14 @@ async def get_partners(
                     exports_billions_usd,
                     imports_billions_usd,
                     total_trade_billions_usd,
-                    total_trade_billions_usd / NULLIF(SUM(total_trade_billions_usd) OVER (), 0) * 100
+                    total_trade_billions_usd / NULLIF((SELECT total_trade_billions_usd FROM scope_total), 0) * 100
                         AS total_trade_partner_share_pct,
                     ROW_NUMBER() OVER (ORDER BY total_trade_billions_usd DESC) AS partner_rank
                 FROM agg
                 ORDER BY total_trade_billions_usd DESC
                 LIMIT 10
                 """,
-                [bloc, year],
+                [bloc, year, bloc, year],
             )
         return rows
     except Exception as exc:
@@ -433,7 +438,8 @@ async def get_partner_history(
                 ),
                 totals AS (
                     SELECT year, SUM(total_trade_billions_usd) AS year_total
-                    FROM valid_rows
+                    FROM {CATALOG}.gold.dashboard_country_timeseries
+                    WHERE analytical_bloc_code = ?
                     GROUP BY year
                 ),
                 selected AS (
@@ -448,7 +454,7 @@ async def get_partner_history(
                 JOIN totals t ON t.year = s.year
                 ORDER BY s.year
                 """,
-                [bloc, partner1, partner2],
+                [bloc, bloc, partner1, partner2],
             )
         return rows
     except Exception as exc:
