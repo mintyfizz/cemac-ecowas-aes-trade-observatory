@@ -406,6 +406,7 @@ def extract(
     flow_codes: str = "X,M,RX,RM",
     pause: float = 1.0,
     api_keys: list[str] | None = None,
+    resume: bool = False,
 ) -> None:
     if api_keys is None:
         api_keys = _get_api_keys()
@@ -430,10 +431,24 @@ def extract(
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
+    # Build skip-set from existing file when resuming
+    completed_pairs: set[tuple[str, str]] = set()
+    if resume and out_path.exists():
+        with out_path.open("r", encoding="utf-8") as _rh:
+            for _line in _rh:
+                try:
+                    _rec = json.loads(_line)
+                    if "error" not in _rec and _rec.get("row_count", 0) >= 0:
+                        completed_pairs.add((_rec["reporter_iso3"], _rec["period"]))
+                except json.JSONDecodeError:
+                    pass
+        print(f"Resume mode: {len(completed_pairs)} reporter×period pairs already in file — skipping.")
+
     print(f"Mode: {freq} | cmd: {cmd_code} | flows: {flow_codes} | endpoint: {endpoint_label}")
     print(f"Reporters: {len(reporters)} | Periods: {len(periods)} | Total requests: {total}")
 
-    with out_path.open("w", encoding="utf-8") as fh:
+    open_mode = "a" if resume else "w"
+    with out_path.open(open_mode, encoding="utf-8") as fh:
         for country in reporters:
             reporter_code = country["code"]
             reporter_iso3 = country["iso3"]
@@ -441,6 +456,9 @@ def extract(
             for period in periods:
                 done += 1
                 year = int(period[:4])
+                if (reporter_iso3, period) in completed_pairs:
+                    print(f"[{done:5d}/{total}] {reporter_iso3} ({reporter_code}) {period}  SKIPPED (already extracted)")
+                    continue
                 print(f"[{done:5d}/{total}] {reporter_iso3} ({reporter_code}) {period}",
                       end="  ", flush=True)
                 try:
@@ -542,6 +560,12 @@ def _build_parser() -> argparse.ArgumentParser:
                    help="Seconds to wait between requests (default 1.0).")
     p.add_argument("--no-key", action="store_true",
                    help="Force public preview endpoint even if API key is set.")
+    p.add_argument("--resume", action="store_true",
+                   help=(
+                       "Append to an existing output file, skipping reporter×period pairs "
+                       "that were already successfully extracted (no error field). "
+                       "Use this to continue after a partial run."
+                   ))
     return p
 
 
@@ -582,6 +606,7 @@ def main() -> int:
         flow_codes=args.flow_codes,
         pause=args.pause,
         api_keys=api_keys,
+        resume=args.resume,
     )
     return 0
 
