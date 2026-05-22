@@ -79,10 +79,10 @@
       <div class="row two">
         <div class="chart-box">
           <h3 id="partners-title">Top 10 trading partners</h3>
-          <p class="sub" id="partners-sub">Trade value, USD billions · selected year · green = exports, purple = imports</p>
-          <div class="bar-legend">
-            <span><i class="bar-legend-swatch exp"></i>Exports</span>
-            <span><i class="bar-legend-swatch imp"></i>Imports</span>
+          <p class="sub" id="partners-sub">USD billions · selected year · balance = exports minus imports</p>
+          <div class="bar-legend dbar-legend">
+            <span><i class="bar-legend-swatch imp"></i>← Imports</span>
+            <span><i class="bar-legend-swatch exp"></i>Exports →</span>
           </div>
           <div id="partner-bars" class="partner-bars"></div>
         </div>
@@ -148,7 +148,7 @@
             <button class="flow-btn" data-flow="import" type="button">Imports</button>
           </div>
         </div>
-        <canvas id="products-chart"></canvas>
+        <div id="products-treemap" class="products-treemap"></div>
         <div id="products-empty" class="empty-state product-empty" hidden></div>
         <p class="note" id="products-note"></p>
       </div>

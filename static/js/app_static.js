@@ -988,7 +988,7 @@ async function loadProducts(version) {
   const subEl = document.getElementById("products-sub");
   const noteEl = document.getElementById("products-note");
   const emptyEl = document.getElementById("products-empty");
-  const chartEl = document.getElementById("products-chart");
+  const chartEl = document.getElementById("products-treemap");
   if (titleEl) titleEl.textContent = `${scopeName()} · Top ${State.productsFlow} sectors`;
   if (subEl) subEl.textContent = `Loading ${State.productsFlow} product sectors...`;
   if (noteEl) noteEl.textContent = "";
@@ -1002,7 +1002,7 @@ async function loadProducts(version) {
   if (!isFresh(version)) return;
 
   if (!data.available) {
-    destroyChart("products-chart");
+    if (chartEl) chartEl.innerHTML = "";
     if (chartEl) chartEl.style.display = "none";
     if (subEl) subEl.textContent = data.coverage_note || "Product data not available for this selection.";
     if (emptyEl) {
