@@ -325,7 +325,11 @@ async def get_map(
             f"""
             SELECT country_iso3, country_name, analytical_bloc_code, {col} AS value
             FROM {CATALOG}.gold.dashboard_country_timeseries
-            WHERE year = ?
+            WHERE year = (
+                SELECT MAX(year)
+                FROM {CATALOG}.gold.dashboard_country_timeseries
+                WHERE year <= ? AND {col} IS NOT NULL
+            )
             """,
             [year],
         )
