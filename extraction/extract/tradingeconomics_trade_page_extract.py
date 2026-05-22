@@ -12,7 +12,7 @@ Each JSONL line is one reporter and one flow:
     "method": "tedata_style_html_table_scrape",
     "reporter_iso3": "COG",
     "flow_type": "export",
-    "source_url": "https://tradingeconomics.com/republic-of-the-congo/exports-by-country",
+    "source_url": "https://tradingeconomics.com/congo/exports-by-country",
     "payload": [
       {"partner_name": "China", "value_usd": 5150000000.0, "year": 2023, ...}
     ]
@@ -59,7 +59,7 @@ CEMAC = [
     ProjectCountry("CMR", "Cameroon", "cameroon", "CEMAC"),
     ProjectCountry("CAF", "Central African Republic", "central-african-republic", "CEMAC"),
     ProjectCountry("TCD", "Chad", "chad", "CEMAC"),
-    ProjectCountry("COG", "Republic of the Congo", "republic-of-the-congo", "CEMAC"),
+    ProjectCountry("COG", "Republic of the Congo", "congo", "CEMAC"),
     ProjectCountry("GNQ", "Equatorial Guinea", "equatorial-guinea", "CEMAC"),
     ProjectCountry("GAB", "Gabon", "gabon", "CEMAC"),
 ]
@@ -374,7 +374,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--slug-override",
         action="append",
-        help="Override a Trading Economics country slug, e.g. COG=republic-of-the-congo.",
+        help="Override a Trading Economics country slug, e.g. COG=congo.",
     )
     return parser.parse_args()
 
