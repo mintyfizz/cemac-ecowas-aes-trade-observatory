@@ -985,7 +985,7 @@ function renderProducts(rows, flow) {
   container.innerHTML = "";
 
   const items = rows
-    .slice(0, 12)
+    .slice(0, 8)
     .map(r => ({
       name: r.hs2_description || `HS ${r.hs2_code}`,
       value: numericOrNull(r.trade_value_billions_usd) || 0,
@@ -1031,20 +1031,36 @@ function renderProducts(rows, flow) {
   cells.forEach((cell, ci) => {
     const { item, x, y, w, h } = cell;
     const bg = palette[Math.min(ci, palette.length - 1)];
+    const isLarge = h > 38;
     const div = document.createElement("div");
     div.className = "treemap-cell";
-    div.style.cssText = `left:${x.toFixed(2)}%;top:${y.toFixed(2)}%;width:${w.toFixed(2)}%;height:${h.toFixed(2)}%;background:${bg};`;
+    div.style.left = `${x.toFixed(2)}%`;
+    div.style.top = `${y.toFixed(2)}%`;
+    div.style.width = `${w.toFixed(2)}%`;
+    div.style.height = `${h.toFixed(2)}%`;
+    div.style.backgroundColor = bg;
+    if (isLarge) {
+      // Large dominant cell: center the label, no gradient needed
+      div.style.justifyContent = "center";
+      div.style.alignItems = "center";
+      div.style.textAlign = "center";
+    } else {
+      // Smaller cells: gradient darkens bottom so label is legible
+      div.style.backgroundImage = "linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.45))";
+    }
     div.title = `${item.name}\n${shortMoneyB(item.value)} · ${fmtPct(item.share)} of ${flow}s`;
 
-    if (w > 9 && h > 12) {
+    if (w > 9 && h > 10) {
       const nameEl = document.createElement("div");
       nameEl.className = "tm-name";
+      if (isLarge) nameEl.style.fontSize = "15px";
       nameEl.textContent = item.name;
       div.appendChild(nameEl);
     }
-    if (w > 12 && h > 22) {
+    if (w > 12 && h > 20) {
       const metaEl = document.createElement("div");
       metaEl.className = "tm-meta";
+      if (isLarge) metaEl.style.marginTop = "4px";
       metaEl.textContent = `${shortMoneyB(item.value)} · ${fmtPct(item.share)}`;
       div.appendChild(metaEl);
     }
