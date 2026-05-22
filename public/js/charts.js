@@ -361,22 +361,45 @@ function renderPartnerBars(rows) {
     return;
   }
 
-  const max = Math.max(...rows.map(row => Number(row.total_trade_billions_usd) || 0), 1);
-  el.innerHTML = rows.slice(0, 10).map(row => {
-    const exports = Number(row.exports_billions_usd) || 0;
-    const imports = Number(row.imports_billions_usd) || 0;
-    const total = Math.max(exports + imports, 0.000001);
-    const width = Math.max(3, (Number(row.total_trade_billions_usd || 0) / max) * 100);
-    const expWidth = Math.max(0, (exports / total) * width);
-    const impWidth = Math.max(0, (imports / total) * width);
+  const top10 = rows.slice(0, 10);
+  const totalAll = top10.reduce((s, r) => s + (Number(r.total_trade_billions_usd) || 0), 0);
+  // Scale each side independently so the widest bar fills 100%
+  const maxSide = Math.max(
+    ...top10.map(r => Math.max(Number(r.exports_billions_usd) || 0, Number(r.imports_billions_usd) || 0)),
+    1
+  );
+
+  el.innerHTML = top10.map((row, i) => {
+    const exp = Number(row.exports_billions_usd) || 0;
+    const imp = Number(row.imports_billions_usd) || 0;
+    const total = exp + imp;
+    const balance = exp - imp;
+    const sharePct = totalAll > 0 ? (total / totalAll * 100).toFixed(1) : "—";
+
+    const expPct = Math.max(2, (exp / maxSide) * 100).toFixed(2);
+    const impPct = Math.max(2, (imp / maxSide) * 100).toFixed(2);
+
+    // Balance badge: +surplus / −deficit / balanced
+    const balClass = balance > 0.05 ? "surplus" : balance < -0.05 ? "deficit" : "balanced";
+    const balLabel = Math.abs(balance) < 0.05 ? "≈0" : (balance > 0 ? "+" : "") + shortMoneyB(balance);
+
+    const name = escapeHTML(row.counterpart_name && row.counterpart_name !== row.counterpart_iso3
+      ? row.counterpart_name : row.counterpart_iso3);
+
     return `
-      <div class="bar-row" title="${escapeHTML(row.counterpart_name || row.counterpart_iso3)}">
-        <div class="bar-name">${escapeHTML(row.counterpart_name || row.counterpart_iso3)}</div>
-        <div class="bar-track">
-          <div class="bar-export" style="width:${expWidth}%"></div>
-          <div class="bar-import" style="width:${impWidth}%"></div>
+      <div class="dbar-row" title="${name} · Balance: ${balLabel}">
+        <div class="dbar-imp-val">${shortMoneyB(imp)}</div>
+        <div class="dbar-imp-track">
+          <div class="dbar-imp-fill" style="width:${impPct}%"></div>
         </div>
-        <div class="bar-value">${shortMoneyB(row.total_trade_billions_usd)}</div>
+        <div class="dbar-center">
+          <span class="dbar-name">${name}</span>
+          <span class="dbar-meta"><span class="dbar-bal ${balClass}">${balLabel}</span><span class="dbar-sep">·</span>${sharePct}%</span>
+        </div>
+        <div class="dbar-exp-track">
+          <div class="dbar-exp-fill" style="width:${expPct}%"></div>
+        </div>
+        <div class="dbar-exp-val">${shortMoneyB(exp)}</div>
       </div>`;
   }).join("");
 }

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CEMAC - ECOWAS - AES Trade Observatory</title>
-  <link rel="stylesheet" href="/css/styles.css?v=20260522-v2" />
+  <link rel="stylesheet" href="/css/styles.css?v=20260522-v3" />
   <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
@@ -79,10 +79,10 @@
       <div class="row two">
         <div class="chart-box">
           <h3 id="partners-title">Top 10 trading partners</h3>
-          <p class="sub" id="partners-sub">Trade value, USD billions · selected year · green = exports, purple = imports</p>
-          <div class="bar-legend">
-            <span><i class="bar-legend-swatch exp"></i>Exports</span>
-            <span><i class="bar-legend-swatch imp"></i>Imports</span>
+          <p class="sub" id="partners-sub">USD billions · selected year · balance = exports minus imports</p>
+          <div class="bar-legend dbar-legend">
+            <span><i class="bar-legend-swatch imp"></i>← Imports</span>
+            <span><i class="bar-legend-swatch exp"></i>Exports →</span>
           </div>
           <div id="partner-bars" class="partner-bars"></div>
         </div>
@@ -191,7 +191,7 @@
 
   <div class="toast" id="toast" role="alert" aria-live="assertive"></div>
 
-  <script src="/js/charts.js?v=20260522-v2"></script>
-  <script src="/js/app.js?v=20260522-v2"></script>
+  <script src="/js/charts.js?v=20260522-v3"></script>
+  <script src="/js/app.js?v=20260522-v3"></script>
 </body>
 </html>
