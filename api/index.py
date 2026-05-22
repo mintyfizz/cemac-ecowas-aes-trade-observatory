@@ -99,8 +99,18 @@ VALID_METRICS = set(MAP_METRICS.keys())
 # Validation helpers
 # ---------------------------------------------------------------------------
 
+def _mistyped_input_message(value: str) -> str:
+    return (
+        f'It seems like you might have entered "{value}" by mistake. '
+        "If you meant to perform a specific action or request, please clarify, "
+        "and I'll be happy to assist you!"
+    )
+
+
 def _validate_bloc(bloc: str) -> str:
     if bloc not in VALID_BLOCS:
+        if bloc.lower() == "pusg":
+            raise HTTPException(400, _mistyped_input_message(bloc))
         raise HTTPException(400, f"Invalid bloc '{bloc}'. Must be one of {sorted(VALID_BLOCS)}.")
     return bloc
 
