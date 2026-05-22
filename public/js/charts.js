@@ -37,6 +37,41 @@ const COUNTRY_COLORS = {
 
 const NEIGHBOR_NUMERIC = new Set(["478", "012", "12", "434", "729", "728", "180", "024", "24", "678", "504", "732"]);
 
+// Full country names keyed by ISO 3166-1 alpha-3 code.
+// Used wherever the API returns raw ISO3 codes as counterpart_name.
+const ISO3_NAMES = {
+  // Project countries
+  BEN:"Benin", BFA:"Burkina Faso", CAF:"Central African Rep.", CMR:"Cameroon",
+  COG:"Congo", CPV:"Cabo Verde", CIV:"Côte d'Ivoire", GAB:"Gabon",
+  GHA:"Ghana", GIN:"Guinea", GMB:"Gambia", GNB:"Guinea-Bissau",
+  GNQ:"Equatorial Guinea", LBR:"Liberia", MLI:"Mali", NER:"Niger",
+  NGA:"Nigeria", SEN:"Senegal", SLE:"Sierra Leone", TCD:"Chad", TGO:"Togo",
+  // Major global partners
+  ARE:"UAE", ARG:"Argentina", AUS:"Australia", AUT:"Austria",
+  BEL:"Belgium", BGD:"Bangladesh", BRA:"Brazil", CAN:"Canada",
+  CHE:"Switzerland", CHL:"Chile", CHN:"China", COL:"Colombia",
+  DEU:"Germany", DNK:"Denmark", DZA:"Algeria", EGY:"Egypt",
+  ESP:"Spain", ETH:"Ethiopia", FIN:"Finland", FRA:"France",
+  GBR:"United Kingdom", GRC:"Greece", HKG:"Hong Kong", IDN:"Indonesia",
+  IND:"India", IRL:"Ireland", IRN:"Iran", IRQ:"Iraq",
+  ISR:"Israel", ITA:"Italy", JPN:"Japan", KAZ:"Kazakhstan",
+  KOR:"South Korea", KWT:"Kuwait", LBN:"Lebanon", LBY:"Libya",
+  MAR:"Morocco", MEX:"Mexico", MYS:"Malaysia", NGA:"Nigeria",
+  NLD:"Netherlands", NOR:"Norway", OMN:"Oman", PAK:"Pakistan",
+  PHL:"Philippines", POL:"Poland", PRT:"Portugal", QAT:"Qatar",
+  ROU:"Romania", RUS:"Russia", SAU:"Saudi Arabia", SDN:"Sudan",
+  SGP:"Singapore", SWE:"Sweden", THA:"Thailand", TUN:"Tunisia",
+  TUR:"Turkey", TWN:"Taiwan", UKR:"Ukraine", USA:"United States",
+  VNM:"Vietnam", ZAF:"South Africa", ZMB:"Zambia", ZWE:"Zimbabwe",
+  // Additional African countries
+  AGO:"Angola", BDI:"Burundi", BWA:"Botswana", COM:"Comoros",
+  CPV:"Cabo Verde", DJI:"Djibouti", ERI:"Eritrea", KEN:"Kenya",
+  LSO:"Lesotho", MDG:"Madagascar", MOZ:"Mozambique", MRT:"Mauritania",
+  MUS:"Mauritius", MWI:"Malawi", NAM:"Namibia", RWA:"Rwanda",
+  SOM:"Somalia", SSD:"South Sudan", SWZ:"Eswatini", TZA:"Tanzania",
+  UGA:"Uganda",
+};
+
 const chartStore = {};
 let worldPromise = null;
 
@@ -383,8 +418,11 @@ function renderPartnerBars(rows) {
     const balClass = balance > 0.05 ? "surplus" : balance < -0.05 ? "deficit" : "balanced";
     const balLabel = Math.abs(balance) < 0.05 ? "≈0" : (balance > 0 ? "+" : "") + shortMoneyB(balance);
 
-    const name = escapeHTML(row.counterpart_name && row.counterpart_name !== row.counterpart_iso3
-      ? row.counterpart_name : row.counterpart_iso3);
+    const name = escapeHTML(
+      ISO3_NAMES[row.counterpart_iso3]
+      || (row.counterpart_name && row.counterpart_name !== row.counterpart_iso3 ? row.counterpart_name : null)
+      || row.counterpart_iso3
+    );
 
     return `
       <div class="dbar-row" title="${name} · Balance: ${balLabel}">
