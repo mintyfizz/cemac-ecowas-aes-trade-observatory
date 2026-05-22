@@ -717,6 +717,9 @@ async def get_products(
         else:
             members = BLOCS[bloc]
             placeholders = ", ".join(["?"] * len(members))
+            # Require at least half of bloc members to have submitted data;
+            # otherwise the aggregate is unrepresentative (e.g. 1-of-6 CEMAC in 2024).
+            threshold = max(1, len(members) // 2)
 
             def bloc_product_rows(target_year: int) -> list[dict]:
                 return dbq(
@@ -757,7 +760,28 @@ async def get_products(
                 )
                 return (n_reporters_result[0].get("n_reporters") or 0) if n_reporters_result else 0
 
-            rows = bloc_product_rows(year)
+            # Find the most recent year ≤ requested that meets the reporter threshold.
+            best_year_result = dbq(
+                f"""
+                SELECT year
+                FROM {CATALOG}.gold.product_trade_hs2
+                WHERE reporter_iso3 IN ({placeholders})
+                  AND year <= ?
+                  AND flow_type = ?
+                GROUP BY year
+                HAVING COUNT(DISTINCT reporter_iso3) >= ?
+                ORDER BY year DESC
+                LIMIT 1
+                """,
+                [*members, year, flow, threshold],
+            )
+            data_year = (
+                best_year_result[0]["year"]
+                if best_year_result and best_year_result[0].get("year")
+                else year
+            )
+
+            rows = bloc_product_rows(data_year)
             if not rows:
                 latest_result = dbq(
                     f"""
@@ -774,15 +798,20 @@ async def get_products(
                 )
                 return {"available": False, "coverage_note": coverage_note, "rows": [], "latest_year": latest_year}
 
-            n_reporters = reporter_count(year)
+            n_reporters = reporter_count(data_year)
+            year_label = (
+                str(data_year)
+                if data_year == year
+                else f"{data_year} (latest with ≥{threshold} reporters; {year} has too few)"
+            )
             coverage_note = (
                 f"UN Comtrade · {n_reporters} of {len(members)} {bloc} reporters "
-                f"with coverage · {year}"
+                f"with coverage · {year_label}"
             )
             return {
                 "available": True,
                 "coverage_note": coverage_note,
-                "data_year": year,
+                "data_year": data_year,
                 "rows": rows,
             }
     except HTTPException:
