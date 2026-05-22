@@ -59,17 +59,20 @@ function scopeName() {
 }
 
 function numberOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
 
 function fmtCurrency(value, digits = 0) {
+  if (value === null || value === undefined || value === "") return "--";
   const n = Number(value);
   if (!Number.isFinite(n)) return "--";
   return `$${n.toLocaleString("en-US", { maximumFractionDigits: digits })}`;
 }
 
 function fmtPop(value) {
+  if (value === null || value === undefined || value === "") return "--";
   const n = Number(value);
   if (!Number.isFinite(n)) return "--";
   if (n >= 1000) return `${(n / 1000).toFixed(2)}B`;
@@ -77,6 +80,7 @@ function fmtPop(value) {
 }
 
 function deltaBadge(value, digits = 1, suffix = "") {
+  if (value === null || value === undefined || value === "") return "";
   const n = Number(value);
   if (!Number.isFinite(n)) return "";
   const tone = n > 0 ? "up" : n < 0 ? "down" : "flat";

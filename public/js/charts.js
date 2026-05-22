@@ -135,6 +135,7 @@ function escapeHTML(value) {
 }
 
 function shortMoneyB(value) {
+  if (value === null || value === undefined || value === "") return "--";
   const n = Number(value);
   if (!Number.isFinite(n)) return "--";
   if (Math.abs(n) >= 1000) return `$${(n / 1000).toFixed(1)}T`;
@@ -143,17 +144,26 @@ function shortMoneyB(value) {
   return `$${n.toFixed(2)}B`;
 }
 
+function numericOrNull(value) {
+  if (value === null || value === undefined || value === "") return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 function fmtPct(value, digits = 1) {
+  if (value === null || value === undefined || value === "") return "--";
   const n = Number(value);
   return Number.isFinite(n) ? `${n.toFixed(digits)}%` : "--";
 }
 
 function fmtPlain(value, digits = 1) {
+  if (value === null || value === undefined || value === "") return "--";
   const n = Number(value);
   return Number.isFinite(n) ? n.toFixed(digits) : "--";
 }
 
 function fmtNumber(value, digits = 0) {
+  if (value === null || value === undefined || value === "") return "--";
   const n = Number(value);
   return Number.isFinite(n)
     ? n.toLocaleString("en-US", { maximumFractionDigits: digits, minimumFractionDigits: digits })
@@ -641,22 +651,20 @@ function renderStructureTree(overview) {
   if (!ctx) return;
   ctx.parentElement?.querySelectorAll(".empty-state").forEach(node => node.remove());
 
-  const exportVal = Number(overview.exports_billions_usd) || 0;
-  const importVal = Number(overview.imports_billions_usd) || 0;
-  const balance = Number(overview.trade_balance_billions_usd);
-  const gdp = Number(overview.gdp_current_usd_billions);
-  const exportsPct = Number.isFinite(Number(overview.exports_pct_gdp))
-    ? Number(overview.exports_pct_gdp)
-    : (Number.isFinite(gdp) && gdp !== 0 ? exportVal / gdp * 100 : null);
-  const importsPct = Number.isFinite(Number(overview.imports_pct_gdp))
-    ? Number(overview.imports_pct_gdp)
-    : (Number.isFinite(gdp) && gdp !== 0 ? importVal / gdp * 100 : null);
-  const balancePctGdp = Number.isFinite(balance) && Number.isFinite(gdp) && gdp !== 0 ? balance / gdp * 100 : null;
+  const exportVal = numericOrNull(overview.exports_billions_usd);
+  const importVal = numericOrNull(overview.imports_billions_usd);
+  const balance = numericOrNull(overview.trade_balance_billions_usd);
+  const gdp = numericOrNull(overview.gdp_current_usd_billions);
+  const rawExportsPct = numericOrNull(overview.exports_pct_gdp);
+  const rawImportsPct = numericOrNull(overview.imports_pct_gdp);
+  const exportsPct = rawExportsPct ?? (exportVal != null && gdp ? exportVal / gdp * 100 : null);
+  const importsPct = rawImportsPct ?? (importVal != null && gdp ? importVal / gdp * 100 : null);
+  const balancePctGdp = balance != null && gdp ? balance / gdp * 100 : null;
 
   const rows = [
     { label: "Exports / GDP", pct: exportsPct, usd: exportVal, color: COLORS.exports },
     { label: "Imports / GDP", pct: importsPct, usd: importVal, color: COLORS.imports },
-    { label: "Balance / GDP", pct: balancePctGdp, usd: balance, color: balance >= 0 ? COLORS.exports : COLORS.danger },
+    { label: "Balance / GDP", pct: balancePctGdp, usd: balance, color: balance == null || balance >= 0 ? COLORS.exports : COLORS.danger },
   ];
   const validRows = rows.filter(row => Number.isFinite(row.pct));
   if (!validRows.length) {
@@ -900,8 +908,8 @@ function renderProducts(rows, flow) {
     const label = `HS ${r.hs2_code} · ${desc}`;
     return label.length > 54 ? label.slice(0, 51) + "…" : label;
   });
-  const values = top.map(r => r.trade_value_billions_usd ?? 0);
-  const shares = top.map(r => r.hs2_share_pct ?? 0);
+  const values = top.map(r => numericOrNull(r.trade_value_billions_usd));
+  const shares = top.map(r => numericOrNull(r.hs2_share_pct));
   const codes  = top.map(r => r.hs2_code);
   const descs  = top.map(r => r.hs2_description || `HS ${r.hs2_code}`);
 
@@ -933,9 +941,9 @@ function renderProducts(rows, flow) {
             label: ctx => {
               const val = ctx.parsed.x;
               const share = shares[ctx.dataIndex];
-              return `Trade value: $${val.toFixed(2)}B`;
+              return `Trade value: ${shortMoneyB(val)}`;
             },
-            afterLabel: ctx => `Share of ${flow}s: ${shares[ctx.dataIndex].toFixed(1)}%`,
+            afterLabel: ctx => `Share of ${flow}s: ${fmtPct(shares[ctx.dataIndex])}`,
           },
         },
       },

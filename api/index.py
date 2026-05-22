@@ -502,8 +502,9 @@ async def get_concentration(
                 """,
             )
 
-        # UN Comtrade is not loaded, so the integration panel uses bloc trade
-        # openness rather than product-level or mirror-pair metrics.
+        # The integration panel uses bloc trade openness rather than mirror-pair
+        # metrics because the loaded product data is sectoral, not reporter-vs-
+        # partner mirror reconciliation data.
         intra_rows = dbq(
             f"""
             SELECT year, analytical_bloc_code,

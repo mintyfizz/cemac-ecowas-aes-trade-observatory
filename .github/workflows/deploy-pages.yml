@@ -30,6 +30,11 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
       - name: Install dependencies
         run: pip install -r requirements.txt
 
@@ -47,6 +52,24 @@ jobs:
           mkdir -p static/css static/js
           cp -r public/css/. static/css/
           cp public/js/charts.js static/js/charts.js
+
+      - name: Validate frontend JavaScript
+        run: |
+          node --check public/js/app.js
+          node --check public/js/charts.js
+          node --check static/js/app_static.js
+
+      - name: Validate Python scripts
+        run: |
+          python -m py_compile scripts/export_static.py scripts/audit_dashboard_data.py scripts/validate_dashboard_contract.py
+
+      - name: Audit exported static dashboard data
+        env:
+          DATABRICKS_HOST:      ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+          DATABRICKS_TOKEN:     ${{ secrets.DATABRICKS_TOKEN }}
+          DATABRICKS_CATALOG:   ${{ secrets.DATABRICKS_CATALOG }}
+        run: python scripts/audit_dashboard_data.py --check-only
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

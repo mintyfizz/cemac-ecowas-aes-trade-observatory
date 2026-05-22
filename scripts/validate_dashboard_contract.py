@@ -25,6 +25,12 @@ EXPECTED_COUNTS = {
     "gold.dashboard_bloc_comparison": 71,
 }
 
+REQUIRED_NONZERO = [
+    "gold.dashboard_top_trade_partners",
+    "gold.dashboard_conflict_hotspots",
+    "gold.product_trade_hs2",
+]
+
 
 def table_count(table_name: str) -> int:
     rows = query(f"SELECT COUNT(*) AS rows FROM {CATALOG}.{table_name}")
@@ -39,6 +45,12 @@ def main() -> int:
         print(f"{table_name}: {actual} rows")
         if actual != expected:
             failures.append(f"{table_name}: expected {expected}, got {actual}")
+
+    for table_name in REQUIRED_NONZERO:
+        actual = table_count(table_name)
+        print(f"{table_name}: {actual} rows")
+        if actual <= 0:
+            failures.append(f"{table_name}: expected nonzero rows, got {actual}")
 
     coverage = query(
         f"""
@@ -61,11 +73,10 @@ def main() -> int:
         f"""
         SELECT COUNT(*) AS rows
         FROM {CATALOG}.gold.dashboard_top_trade_partners
-        WHERE year = 2024
-          AND counterpart_iso3 NOT RLIKE '^[A-Z]{{3}}$'
+        WHERE counterpart_iso3 NOT RLIKE '^[A-Z]{{3}}$'
         """
     )[0]["rows"]
-    print(f"2024 aggregate partner rows present in raw top-partner mart: {aggregate_partners}")
+    print(f"aggregate partner rows present in raw top-partner mart: {aggregate_partners}")
     print("API filters aggregate partner rows out of public top-partner panels.")
 
     if failures:

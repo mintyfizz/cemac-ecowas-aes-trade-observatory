@@ -15,16 +15,17 @@ server or API key is needed to view it.
 
 ## Dashboard
 
-The dashboard is organised into six panels accessible via tab navigation:
+The dashboard is organised into seven data-backed sections:
 
 | Panel | What it shows |
 |---|---|
 | **Overview** | Country map coloured by a selectable metric (trade volume, openness, HHI, GDP, fragility, conflict fatalities). Click a country to drill in. Summary stat cards per bloc. |
-| **Economic profile** | GDP trend, trade openness over time, and macro-fiscal scorecard for the selected country. |
+| **Economic profile** | GDP, population, debt, inflation, fiscal balance, and other macro cards for the selected scope. |
 | **Trading partners** | Top 10 trading partners by year (bar chart) and a two-partner share comparison over time (line chart). IMF aggregate groups excluded. |
 | **Concentration & regional integration** | Partner concentration (HHI) trend and bloc-level trade openness as a proxy for regional integration. |
-| **Growth & trade structure** | Trade indexed to 1990 base = 100, and a trade exposure mix showing exports, imports, balance, openness, and HHI. |
-| **Operational context** | ACLED conflict events and fatalities (latest 3-year hotspot window), FSI fragility component breakdown, and a normalised macro-fiscal risk scorecard. |
+| **Growth & trade structure** | Trade indexed to 1990 base = 100, and a trade exposure profile showing exports, imports, and balance as shares of GDP. |
+| **Product trade structure** | Top HS2 export/import sectors from `gold.product_trade_hs2`, with explicit empty states where selected-year product coverage is absent. |
+| **Operational context** | ACLED conflict events and fatalities (latest 3-year hotspot window), FSI fragility component breakdown, and a normalised macro-fiscal pressure diagnostic. |
 
 ### How the static build works
 
@@ -35,12 +36,14 @@ git push → GitHub Actions
         ├── static/data/top_trade_partners.json
         ├── static/data/conflict_hotspots.json
         ├── static/data/fragility_components.json
-        └── static/data/bloc_comparison.json
+        ├── static/data/bloc_comparison.json
+        └── static/data/product_trade_hs2.json
   └── copies public/css/ and public/js/charts.js into static/
+  └── runs scripts/audit_dashboard_data.py
   └── uploads static/ → GitHub Pages
 ```
 
-The browser loads the five JSON files at startup. All filtering, chart
+The browser loads the six JSON files at startup. All filtering, chart
 rendering, and map colouring happens client-side with no back-end calls.
 
 ---
@@ -99,6 +102,7 @@ Raw sources → Bronze (Delta) → Silver (Delta) → Gold marts → Static JSON
 | `gold.dashboard_conflict_hotspots` | 284 | Conflict events & fatalities panel |
 | `gold.dashboard_fragility_components` | 21 | FSI fragility component breakdown |
 | `gold.dashboard_bloc_comparison` | 71 | Regional integration and HHI trend charts |
+| `gold.product_trade_hs2` | exported by CI | HS2 export/import sector panel |
 
 ---
 
@@ -110,7 +114,7 @@ Raw sources → Bronze (Delta) → Silver (Delta) → Gold marts → Static JSON
 | IMF IMTS / DOTS | Annual bilateral goods exports and imports by partner | 1990–2024 | Public API |
 | ACLED | Conflict events, fatalities, actor types | 1990–2024 | Research key |
 | IMF WEO | Debt-to-GDP, fiscal balance, inflation, current account | 1990–2024 | Public CSV |
-| Fund for Peace FSI | Composite and 12-component fragility scores | 2006–2024 | Public CSV |
+| Fund for Peace FSI | Composite and 12-component fragility scores | 2006–2023 latest available in current export | Public CSV |
 
 IMF aggregate partner groups (e.g. `G001`, `W00`) are excluded from all
 partner panels. Only named country counterparts appear in the dashboard.
@@ -149,6 +153,7 @@ partner panels. Only named country counterparts appear in the dashboard.
 │
 ├── scripts/
 │   ├── export_static.py                Queries gold tables → static/data/*.json
+│   ├── audit_dashboard_data.py         Static export and gold-table integrity audit
 │   └── validate_dashboard_contract.py  Validates row counts and schema
 │
 ├── static/                             GitHub Pages build target
