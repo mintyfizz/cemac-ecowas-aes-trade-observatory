@@ -1,8 +1,8 @@
 /**
  * Static dashboard – GitHub Pages build.
  *
- * Identical rendering logic to app.js, but data comes from pre-exported
- * JSON files in data/ instead of live FastAPI endpoints.  No server needed.
+ * Rendering logic backed by pre-exported JSON files in data/. No server
+ * or runtime API is needed.
  *
  * Data files (written by scripts/export_static.py):
  *   data/country_timeseries.json
@@ -16,7 +16,7 @@
 "use strict";
 
 // ---------------------------------------------------------------------------
-// Constants (mirror api/index.py)
+// Constants for the static GitHub Pages dashboard.
 // ---------------------------------------------------------------------------
 
 const BLOCS = {
@@ -112,7 +112,7 @@ function coerceNums(row) {
 }
 
 // ---------------------------------------------------------------------------
-// Local query helpers (JavaScript implementations of the FastAPI endpoints)
+// Local query helpers over the exported JSON datasets.
 // ---------------------------------------------------------------------------
 
 function localMeta() {
@@ -131,7 +131,7 @@ function localMeta() {
   };
 }
 
-// /api/map?metric=M&year=Y
+// Map rows for metric=M and year=Y.
 function localMap(metric, year) {
   const col = MAP_METRIC_COLS[metric] || "trade_openness_pct_gdp";
   return DB.timeseries
@@ -144,7 +144,7 @@ function localMap(metric, year) {
     }));
 }
 
-// /api/overview?bloc=B&year=Y[&country=C]
+// Overview for bloc=B and year=Y, optionally drilled into country=C.
 function localOverview(bloc, year, country) {
   if (country) {
     const b = DB.timeseries.find(r => r.country_iso3 === country && r.year === year) || {};
@@ -269,7 +269,7 @@ function localOverview(bloc, year, country) {
   };
 }
 
-// /api/partners?bloc=B&year=Y[&country=C]
+// Partner rows for bloc=B and year=Y, optionally drilled into country=C.
 function localPartners(bloc, year, country) {
   if (country) {
     return DB.partners
@@ -319,7 +319,7 @@ function localPartners(bloc, year, country) {
   }));
 }
 
-// /api/partner-history?bloc=B&partner1=P1&partner2=P2[&country=C]
+// Partner share history for bloc=B, partner1=P1, partner2=P2, optional country=C.
 function localPartnerHistory(bloc, partner1, partner2, country) {
   const targets = new Set([partner1, partner2]);
 
@@ -358,7 +358,7 @@ function localPartnerHistory(bloc, partner1, partner2, country) {
     }));
 }
 
-// /api/concentration?bloc=B&year=Y[&country=C]
+// Concentration history for bloc=B and year=Y, optional country=C.
 function localConcentration(bloc, year, country) {
   let hhi;
   if (country) {
@@ -395,7 +395,7 @@ function localConcentration(bloc, year, country) {
   return { hhi, intra };
 }
 
-// /api/products?bloc=B&year=Y&flow=F[&country=C]
+// Product-sector structure for bloc=B, year=Y, flow=F, optional country=C.
 function localProducts(bloc, year, country, flow) {
   const selectedFlow = flow === "import" ? "import" : "export";
 
@@ -493,7 +493,7 @@ function localProducts(bloc, year, country, flow) {
   };
 }
 
-// /api/growth?bloc=B[&country=C]
+// Indexed trade growth for bloc=B, optional country=C.
 function localGrowth(bloc, country) {
   let scoped;
   if (country) {
@@ -526,7 +526,7 @@ function localGrowth(bloc, country) {
     }));
 }
 
-// /api/operational?bloc=B&year=Y[&country=C]
+// Operational context for bloc=B and year=Y, optional country=C.
 function localOperational(bloc, year, country) {
   const isCountry = !!country;
   const conflict = isCountry
@@ -587,7 +587,7 @@ function localOperational(bloc, year, country) {
   return { conflict, fragility };
 }
 
-// /api/health  (computed from in-memory data)
+// Pipeline health, computed from in-memory static data.
 function localHealthData() {
   const ts = DB.timeseries;
   const countries = new Set(ts.map(r => r.country_iso3)).size;

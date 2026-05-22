@@ -46,22 +46,14 @@ jobs:
           DATABRICKS_CATALOG:   ${{ secrets.DATABRICKS_CATALOG }}
         run: python scripts/export_static.py
 
-      # Copy shared assets from public/ into the static/ build directory.
-      - name: Copy CSS and charts.js from public/
-        run: |
-          mkdir -p static/css static/js
-          cp -r public/css/. static/css/
-          cp public/js/charts.js static/js/charts.js
-
       - name: Validate frontend JavaScript
         run: |
-          node --check public/js/app.js
-          node --check public/js/charts.js
+          node --check static/js/charts.js
           node --check static/js/app_static.js
 
       - name: Validate Python scripts
         run: |
-          python -m py_compile scripts/export_static.py scripts/audit_dashboard_data.py scripts/validate_dashboard_contract.py
+          python -m py_compile scripts/databricks_sql.py scripts/export_static.py scripts/audit_dashboard_data.py scripts/validate_dashboard_contract.py
 
       - name: Audit exported static dashboard data
         env:

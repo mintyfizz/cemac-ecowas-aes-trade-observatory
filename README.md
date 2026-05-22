@@ -38,7 +38,6 @@ git push → GitHub Actions
         ├── static/data/fragility_components.json
         ├── static/data/bloc_comparison.json
         └── static/data/product_trade_hs2.json
-  └── copies public/css/ and public/js/charts.js into static/
   └── runs scripts/audit_dashboard_data.py
   └── uploads static/ → GitHub Pages
 ```
@@ -152,21 +151,17 @@ partner panels. Only named country counterparts appear in the dashboard.
 ├── 15_gold_dashboard_panel_marts.ipynb gold.dashboard_* (five panel marts)
 │
 ├── scripts/
+│   ├── databricks_sql.py               Databricks SQL Statement API helper
 │   ├── export_static.py                Queries gold tables → static/data/*.json
 │   ├── audit_dashboard_data.py         Static export and gold-table integrity audit
 │   └── validate_dashboard_contract.py  Validates row counts and schema
 │
 ├── static/                             GitHub Pages build target
 │   ├── index.html                      Dashboard shell (static version)
+│   ├── css/styles.css                  Dashboard styling
+│   ├── js/charts.js                    Chart drawing helpers
 │   ├── js/app_static.js                Client-side rendering (reads local JSON)
 │   └── data/                           Exported JSON files (written by CI)
-│
-├── public/                             Shared frontend assets
-│   ├── index.html
-│   ├── css/styles.css
-│   └── js/
-│       ├── app.js                      Rendering logic (shared with static build)
-│       └── charts.js                   Chart drawing helpers (Plotly wrappers)
 │
 ├── extraction/                         Local extraction fallback scripts
 │   └── extract/

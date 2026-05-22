@@ -146,7 +146,8 @@ def main() -> None:
 
     print("All gold notebooks completed. Dashboard gold layer is rebuilt.")
     print("\nVerify with:")
-    print("  curl -s http://127.0.0.1:8502/api/health | python3 -m json.tool")
+    print("  python scripts/export_static.py")
+    print("  python -m http.server 8080 --directory static")
 
 
 if __name__ == "__main__":

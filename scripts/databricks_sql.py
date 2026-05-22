@@ -1,4 +1,4 @@
-"""Databricks SQL Statement Execution API helpers for the web backend."""
+"""Databricks SQL Statement Execution API helpers for build scripts."""
 
 from __future__ import annotations
 
@@ -141,8 +141,8 @@ def _rows(response: dict, host: str, token: str, statement_id: str) -> list[dict
 def query(sql_text: str, params: list[Any] | None = None) -> list[dict[str, Any]]:
     """Execute SQL against Databricks and return rows as dictionaries.
 
-    The public API layer still writes SQL with `?` placeholders. This helper
-    converts them to Databricks named parameters before submitting the statement.
+    Callers may write SQL with `?` placeholders. This helper converts them to
+    Databricks named parameters before submitting the statement.
     """
     host, http_path, token = _creds()
     statement, statement_params = _prepare_statement(sql_text, params)

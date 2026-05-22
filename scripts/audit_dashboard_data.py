@@ -24,7 +24,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 try:
-    from api.db import CATALOG, query as dbq
+    from scripts.databricks_sql import CATALOG, query as dbq
 except Exception:  # pragma: no cover - import failure is reported at runtime
     CATALOG = os.getenv("DATABRICKS_CATALOG", "cemac_ecowas_aes_trade")
     dbq = None
@@ -298,7 +298,7 @@ def databricks_creds_present() -> bool:
 def validate_live(audit: Audit) -> dict[str, int]:
     counts: dict[str, int] = {}
     if dbq is None:
-        audit.fail("Cannot import api.db query helper for live Databricks validation.")
+        audit.fail("Cannot import scripts.databricks_sql query helper for live Databricks validation.")
         return counts
     for name, table in SOURCE_TABLES.items():
         result = dbq(f"SELECT COUNT(*) AS rows FROM {CATALOG}.{table}")
@@ -412,8 +412,8 @@ Missing inputs remain null. They must not be rendered as zero.
 
 ## Fix Priorities
 
-1. Keep `static/index.html`, `static/js/app_static.js`, and `public/js/charts.js`
-   aligned before every GitHub Pages deployment.
+1. Keep `static/index.html`, `static/css/styles.css`, `static/js/charts.js`,
+   and `static/js/app_static.js` aligned before every GitHub Pages deployment.
 2. Re-run `scripts/export_static.py` after gold tables change.
 3. Re-run this audit before publishing and investigate any failure.
 """

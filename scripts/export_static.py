@@ -30,7 +30,7 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from api.db import CATALOG, query as dbq  # noqa: E402
+from scripts.databricks_sql import CATALOG, query as dbq  # noqa: E402
 
 OUT = ROOT / "static" / "data"
 OUT.mkdir(parents=True, exist_ok=True)
