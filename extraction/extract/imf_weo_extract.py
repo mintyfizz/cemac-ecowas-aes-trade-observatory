@@ -106,6 +106,16 @@ INDICATORS = {
         "unit": "current_usd",
         "topic": "macro",
     },
+    "NGDPDPC": {
+        "name": "Gross domestic product per capita, current prices, US dollars",
+        "unit": "current_usd",
+        "topic": "macro",
+    },
+    "LP": {
+        "name": "Population, millions of persons",
+        "unit": "millions_of_persons",
+        "topic": "macro",
+    },
 }
 
 
