@@ -20,7 +20,6 @@ from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from mangum import Mangum
 
 # Allow importing api.db both as a module and directly
 _here = Path(__file__).resolve().parent
@@ -43,7 +42,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # tighten to your Vercel domain in production
+    allow_origins=["*"],
     allow_methods=["GET"],
     allow_headers=["*"],
 )
@@ -57,9 +56,6 @@ if PUBLIC_DIR.exists():
 async def index() -> FileResponse:
     return FileResponse(PUBLIC_DIR / "index.html")
 
-
-# Mangum adapter for Vercel / AWS Lambda serverless
-handler = Mangum(app, lifespan="off")
 
 # ---------------------------------------------------------------------------
 # Constants
