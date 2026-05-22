@@ -409,7 +409,18 @@ async function loadProducts(version) {
   if (!data.available) {
     destroyChart("products-chart");
     if (el) el.style.display = "none";
-    if (subEl) subEl.textContent = data.coverage_note || "Product data not available for this selection.";
+    const baseNote = data.coverage_note || "Product data not available for this selection.";
+    if (subEl) {
+      if (data.latest_year) {
+        subEl.innerHTML = `${baseNote} &middot; <button class="year-jump-btn" type="button">Load ${data.latest_year}</button>`;
+        subEl.querySelector(".year-jump-btn").addEventListener("click", () => {
+          const sel = document.getElementById("year-select");
+          if (sel) { sel.value = String(data.latest_year); sel.dispatchEvent(new Event("change", { bubbles: true })); }
+        });
+      } else {
+        subEl.textContent = baseNote;
+      }
+    }
     if (noteEl) noteEl.textContent = "";
     return;
   }

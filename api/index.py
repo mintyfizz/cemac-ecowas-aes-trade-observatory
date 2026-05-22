@@ -685,10 +685,20 @@ async def get_products(
                 [country, year, flow],
             )
             if not rows:
+                latest_result = dbq(
+                    f"""
+                    SELECT MAX(year) AS latest_year
+                    FROM {CATALOG}.gold.product_trade_hs2
+                    WHERE reporter_iso3 = ? AND flow_type = ?
+                    """,
+                    [country, flow],
+                )
+                latest_year = (latest_result[0].get("latest_year") if latest_result else None)
                 return {
                     "available": False,
                     "coverage_note": f"No Comtrade product data for {country} · {year}",
                     "rows": [],
+                    "latest_year": latest_year,
                 }
             return {
                 "available": True,
@@ -738,7 +748,17 @@ async def get_products(
                 f"with coverage · {year}"
             )
             if not rows:
-                return {"available": False, "coverage_note": coverage_note, "rows": []}
+                latest_result = dbq(
+                    f"""
+                    SELECT MAX(year) AS latest_year
+                    FROM {CATALOG}.gold.product_trade_hs2
+                    WHERE reporter_iso3 IN ({placeholders})
+                      AND flow_type = ?
+                    """,
+                    [*members, flow],
+                )
+                latest_year = (latest_result[0].get("latest_year") if latest_result else None)
+                return {"available": False, "coverage_note": coverage_note, "rows": [], "latest_year": latest_year}
             return {"available": True, "coverage_note": coverage_note, "rows": rows}
     except HTTPException:
         raise

@@ -816,6 +816,18 @@ button, select {
 
 #section-products .chart-box canvas { height: 420px !important; }
 
+.year-jump-btn {
+  background: transparent;
+  border: 1px solid var(--text-muted);
+  border-radius: 4px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: inherit;
+  padding: 1px 8px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.year-jump-btn:hover { border-color: var(--text); color: var(--text); }
+
 /* ─────────────────────────────────────────────────────────────────────────── */
 
 .toast {
