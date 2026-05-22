@@ -861,7 +861,50 @@ button, select {
   font-weight: 600;
 }
 
-#section-products .chart-box canvas { height: 420px !important; }
+/* Treemap composition chart */
+.products-treemap {
+  position: relative;
+  width: 100%;
+  height: 340px;
+  margin-top: 10px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.products-treemap[hidden] { display: none; }
+
+.treemap-cell {
+  position: absolute;
+  border: 2px solid #000;
+  border-radius: 3px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 7px 8px;
+  box-sizing: border-box;
+  cursor: default;
+  transition: filter 120ms ease;
+}
+
+.treemap-cell:hover { filter: brightness(1.18); }
+
+.tm-name {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.92);
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tm-meta {
+  font-size: 10px;
+  color: rgba(255,255,255,0.6);
+  margin-top: 2px;
+  white-space: nowrap;
+}
 
 .product-empty {
   min-height: 260px;

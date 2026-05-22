@@ -980,72 +980,74 @@ function renderHealth(rows) {
 }
 
 function renderProducts(rows, flow) {
-  const el = canvas("products-chart");
-  if (!el) return;
+  const container = document.getElementById("products-treemap");
+  if (!container) return;
+  container.innerHTML = "";
 
-  const top = rows.slice(0, 12);
-  const color = flow === "export" ? COLORS.exports : COLORS.imports;
-  const barColor = color + "cc";
-  const borderColor = color;
+  const items = rows
+    .slice(0, 12)
+    .map(r => ({
+      name: r.hs2_description || `HS ${r.hs2_code}`,
+      value: numericOrNull(r.trade_value_billions_usd) || 0,
+      share: numericOrNull(r.hs2_share_pct) || 0,
+    }))
+    .filter(d => d.value > 0)
+    .sort((a, b) => b.value - a.value);
 
-  const labels = top.map(r => {
-    const desc = r.hs2_description || `HS ${r.hs2_code}`;
-    const label = `HS ${r.hs2_code} · ${desc}`;
-    return label.length > 54 ? label.slice(0, 51) + "…" : label;
-  });
-  const values = top.map(r => numericOrNull(r.trade_value_billions_usd));
-  const shares = top.map(r => numericOrNull(r.hs2_share_pct));
-  const codes  = top.map(r => r.hs2_code);
-  const descs  = top.map(r => r.hs2_description || `HS ${r.hs2_code}`);
+  if (!items.length) return;
 
-  chartStore["products-chart"] = new Chart(el, {
-    type: "bar",
-    data: {
-      labels,
-      datasets: [{
-        data: values,
-        backgroundColor: barColor,
-        borderColor,
-        borderWidth: 1,
-        borderRadius: 3,
-      }],
-    },
-    options: {
-      indexAxis: "y",
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: "index", axis: "y", intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: "#11120f",
-          borderColor: "#55564f",
-          borderWidth: 1,
-          callbacks: {
-            title: ctx => `HS ${codes[ctx[0].dataIndex]}: ${descs[ctx[0].dataIndex]}`,
-            label: ctx => {
-              const val = ctx.parsed.x;
-              const share = shares[ctx.dataIndex];
-              return `Trade value: ${shortMoneyB(val)}`;
-            },
-            afterLabel: ctx => `Share of ${flow}s: ${fmtPct(shares[ctx.dataIndex])}`,
-          },
-        },
-      },
-      scales: {
-        x: {
-          grid: { color: "rgba(255,255,255,0.06)" },
-          ticks: {
-            color: "#aaa",
-            font: { size: 11 },
-            callback: value => `$${value}B`,
-          },
-        },
-        y: {
-          grid: { display: false },
-          ticks: { color: "#ccc", font: { size: 11 } },
-        },
-      },
-    },
+  // Recursive binary-split treemap layout.
+  // Returns [{item, x, y, w, h}] with all coords in percentage units.
+  function layout(items, x, y, w, h) {
+    if (!items.length) return [];
+    if (items.length === 1) return [{ item: items[0], x, y, w, h }];
+    const tot = items.reduce((s, d) => s + d.value, 0);
+    let acc = 0, split = 1;
+    for (let i = 0; i < items.length - 1; i++) {
+      acc += items[i].value;
+      if (acc >= tot / 2) { split = i + 1; break; }
+    }
+    const g1 = items.slice(0, split);
+    const g2 = items.slice(split);
+    const r1 = g1.reduce((s, d) => s + d.value, 0) / tot;
+    if (w >= h) {
+      const w1 = w * r1;
+      return [...layout(g1, x, y, w1, h), ...layout(g2, x + w1, y, w - w1, h)];
+    } else {
+      const h1 = h * r1;
+      return [...layout(g1, x, y, w, h1), ...layout(g2, x, y + h1, w, h - h1)];
+    }
+  }
+
+  const cells = layout(items, 0, 0, 100, 100);
+
+  // Dark-to-light palette for each flow direction
+  const palettes = {
+    export: ["#0b3327","#0d4435","#106055","#137a6d","#179680","#1db896","#2dd4af","#5de0c3"],
+    import: ["#1a1640","#271f62","#342a86","#4437a8","#5748c5","#706bdc","#8f8aed","#b0adf7"],
+  };
+  const palette = palettes[flow] || palettes.export;
+
+  cells.forEach((cell, ci) => {
+    const { item, x, y, w, h } = cell;
+    const bg = palette[Math.min(ci, palette.length - 1)];
+    const div = document.createElement("div");
+    div.className = "treemap-cell";
+    div.style.cssText = `left:${x.toFixed(2)}%;top:${y.toFixed(2)}%;width:${w.toFixed(2)}%;height:${h.toFixed(2)}%;background:${bg};`;
+    div.title = `${item.name}\n${shortMoneyB(item.value)} · ${fmtPct(item.share)} of ${flow}s`;
+
+    if (w > 9 && h > 12) {
+      const nameEl = document.createElement("div");
+      nameEl.className = "tm-name";
+      nameEl.textContent = item.name;
+      div.appendChild(nameEl);
+    }
+    if (w > 12 && h > 22) {
+      const metaEl = document.createElement("div");
+      metaEl.className = "tm-meta";
+      metaEl.textContent = `${shortMoneyB(item.value)} · ${fmtPct(item.share)}`;
+      div.appendChild(metaEl);
+    }
+    container.appendChild(div);
   });
 }

@@ -408,7 +408,7 @@ async function loadProducts(version) {
   const subEl   = document.getElementById("products-sub");
   const noteEl  = document.getElementById("products-note");
   const emptyEl = document.getElementById("products-empty");
-  const chartEl = document.getElementById("products-chart");
+  const chartEl = document.getElementById("products-treemap");
   if (titleEl) titleEl.textContent = `${scopeName()} · Top ${State.productsFlow} sectors`;
   if (subEl) subEl.textContent = `Loading ${State.productsFlow} product sectors...`;
   if (noteEl) noteEl.textContent = "";
@@ -416,7 +416,7 @@ async function loadProducts(version) {
     emptyEl.hidden = true;
     emptyEl.textContent = "";
   }
-  if (chartEl) chartEl.style.display = "";
+  if (chartEl) chartEl.hidden = false;
 
   const params = new URLSearchParams({
     bloc: State.bloc,
@@ -427,8 +427,7 @@ async function loadProducts(version) {
   const data = await fetchJSON(`/api/products?${params}`);
   if (!isFresh(version)) return;
   if (!data.available) {
-    destroyChart("products-chart");
-    if (chartEl) chartEl.style.display = "none";
+    if (chartEl) { chartEl.innerHTML = ""; chartEl.hidden = true; }
     if (subEl) subEl.textContent = data.coverage_note || "Product data not available for this selection.";
     if (emptyEl) {
       emptyEl.hidden = false;
@@ -439,7 +438,7 @@ async function loadProducts(version) {
     if (noteEl) noteEl.textContent = "";
     return;
   }
-  if (chartEl) chartEl.style.display = "";
+  if (chartEl) chartEl.hidden = false;
   if (emptyEl) emptyEl.hidden = true;
   if (subEl) subEl.textContent = data.coverage_note || `UN Comtrade · ${State.year}`;
   if (noteEl) noteEl.textContent = "Reporter-submitted UN Comtrade HS2 values. Shares are within the displayed flow and scope.";
