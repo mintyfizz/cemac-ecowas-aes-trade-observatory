@@ -397,7 +397,7 @@ async function loadProducts(version) {
   const noteEl  = document.getElementById("products-note");
   const emptyEl = document.getElementById("products-empty");
   const chartEl = document.getElementById("products-chart");
-  if (titleEl) titleEl.textContent = `${scopeName()} · Top ${State.productsFlow} sectors (HS2)`;
+  if (titleEl) titleEl.textContent = `${scopeName()} · Top ${State.productsFlow} sectors`;
   if (subEl) subEl.textContent = `Loading ${State.productsFlow} product sectors...`;
   if (noteEl) noteEl.textContent = "";
   if (emptyEl) {
@@ -429,11 +429,8 @@ async function loadProducts(version) {
   }
   if (chartEl) chartEl.style.display = "";
   if (emptyEl) emptyEl.hidden = true;
-  if (subEl) subEl.textContent = data.coverage_note || `UN Comtrade · product year ${data.data_year || State.year}`;
-  if (noteEl) {
-    noteEl.textContent = data.fallback_note
-      || "Reporter-submitted UN Comtrade HS2 values. Shares are within the displayed flow and scope.";
-  }
+  if (subEl) subEl.textContent = data.coverage_note || `UN Comtrade · ${State.year}`;
+  if (noteEl) noteEl.textContent = "Reporter-submitted UN Comtrade HS2 values. Shares are within the displayed flow and scope.";
   renderProducts(data.rows, State.productsFlow);
 }
 

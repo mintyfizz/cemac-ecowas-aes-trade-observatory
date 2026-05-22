@@ -687,42 +687,26 @@ async def get_products(
                 )
 
             rows = country_product_rows(year)
-            data_year = year
-            fallback_note = None
             if not rows:
                 latest_result = dbq(
                     f"""
-                    SELECT
-                        MAX(CASE WHEN year <= ? THEN year END) AS prior_year,
-                        MAX(year) AS latest_year
+                    SELECT MAX(year) AS latest_year
                     FROM {CATALOG}.gold.product_trade_hs2
                     WHERE reporter_iso3 = ? AND flow_type = ?
                     """,
-                    [year, country, flow],
+                    [country, flow],
                 )
-                prior_year = latest_result[0].get("prior_year") if latest_result else None
                 latest_year = latest_result[0].get("latest_year") if latest_result else None
-                data_year = prior_year or latest_year
-                rows = country_product_rows(data_year) if data_year else []
-                fallback_note = (
-                    f"Selected year {year} has no good HS2 Comtrade coverage; "
-                    f"showing {data_year}, the latest available product year for this scope."
-                    if rows else None
-                )
-            if not rows:
                 return {
                     "available": False,
                     "coverage_note": f"No Comtrade product data for {country} · {year}",
                     "rows": [],
-                    "latest_year": data_year,
+                    "latest_year": latest_year,
                 }
             return {
                 "available": True,
-                "coverage_note": f"UN Comtrade · {COUNTRY_NAMES.get(country, country)} · product year {data_year}",
-                "requested_year": year,
-                "data_year": data_year,
-                "is_fallback_year": data_year != year,
-                "fallback_note": fallback_note,
+                "coverage_note": f"UN Comtrade · {COUNTRY_NAMES.get(country, country)} · {year}",
+                "data_year": year,
                 "rows": rows,
             }
         else:
@@ -769,46 +753,31 @@ async def get_products(
                 return (n_reporters_result[0].get("n_reporters") or 0) if n_reporters_result else 0
 
             rows = bloc_product_rows(year)
-            data_year = year
-            fallback_note = None
             if not rows:
                 latest_result = dbq(
                     f"""
-                    SELECT
-                        MAX(CASE WHEN year <= ? THEN year END) AS prior_year,
-                        MAX(year) AS latest_year
+                    SELECT MAX(year) AS latest_year
                     FROM {CATALOG}.gold.product_trade_hs2
                     WHERE reporter_iso3 IN ({placeholders})
                       AND flow_type = ?
                     """,
-                    [year, *members, flow],
+                    [*members, flow],
                 )
-                prior_year = latest_result[0].get("prior_year") if latest_result else None
                 latest_year = latest_result[0].get("latest_year") if latest_result else None
-                data_year = prior_year or latest_year
-                rows = bloc_product_rows(data_year) if data_year else []
-                fallback_note = (
-                    f"Selected year {year} has no good HS2 Comtrade coverage; "
-                    f"showing {data_year}, the latest available product year for this scope."
-                    if rows else None
+                coverage_note = (
+                    f"UN Comtrade · 0 of {len(members)} {bloc} reporters with coverage · {year}"
                 )
+                return {"available": False, "coverage_note": coverage_note, "rows": [], "latest_year": latest_year}
 
-            n_reporters = reporter_count(data_year) if rows else 0
+            n_reporters = reporter_count(year)
             coverage_note = (
                 f"UN Comtrade · {n_reporters} of {len(members)} {bloc} reporters "
-                f"with coverage · product year {data_year}"
-                if rows else
-                f"UN Comtrade · 0 of {len(members)} {bloc} reporters with coverage · {year}"
+                f"with coverage · {year}"
             )
-            if not rows:
-                return {"available": False, "coverage_note": coverage_note, "rows": [], "latest_year": data_year}
             return {
                 "available": True,
                 "coverage_note": coverage_note,
-                "requested_year": year,
-                "data_year": data_year,
-                "is_fallback_year": data_year != year,
-                "fallback_note": fallback_note,
+                "data_year": year,
                 "rows": rows,
             }
     except HTTPException:

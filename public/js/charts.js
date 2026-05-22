@@ -277,10 +277,11 @@ async function renderMap(rows, state, metricMeta) {
       const iso = COUNTRY_NUMERIC_TO_ISO[String(feature.id)];
       const row = rowByIso.get(iso);
       const val = metricValue(row, state.mapMetric);
+      const svgRect = svg.node().getBoundingClientRect();
       tooltip
         .style("opacity", 1)
-        .style("left", `${event.offsetX}px`)
-        .style("top", `${event.offsetY}px`)
+        .style("left", `${event.clientX - svgRect.left}px`)
+        .style("top", `${event.clientY - svgRect.top}px`)
         .html(
           `<b>${escapeHTML(row?.country_name || iso)}</b><br>` +
           `<span class="muted">${escapeHTML(row?.analytical_bloc_code || "")}</span><br>` +
@@ -318,10 +319,11 @@ async function renderMap(rows, state, metricMeta) {
       .attr("stroke-width", state.country === "CPV" ? 2.5 : 1.4)
       .on("mousemove", event => {
         const val = metricValue(cpvRow, state.mapMetric);
+        const svgRect = svg.node().getBoundingClientRect();
         tooltip
           .style("opacity", 1)
-          .style("left", `${event.offsetX}px`)
-          .style("top", `${event.offsetY}px`)
+          .style("left", `${event.clientX - svgRect.left}px`)
+          .style("top", `${event.clientY - svgRect.top}px`)
           .html(
             `<b>${escapeHTML(cpvRow?.country_name || "Cabo Verde")}</b><br>` +
             `<span class="muted">${escapeHTML(cpvRow?.analytical_bloc_code || "")}</span><br>` +
