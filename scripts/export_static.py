@@ -65,7 +65,7 @@ TABLES: dict[str, ExportSpec] = {
     ),
     "product_trade_hs2": ExportSpec(
         source_table="gold.product_trade_hs2",
-        sql=f"SELECT * FROM {CATALOG}.gold.product_trade_hs2",
+        sql=f"SELECT * FROM {CATALOG}.gold.product_trade_hs2 WHERE flow_type IN ('export', 'import')",
     ),
 }
 
