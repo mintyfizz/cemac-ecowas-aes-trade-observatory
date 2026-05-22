@@ -442,7 +442,7 @@ function renderPartnerBars(rows) {
   }).join("");
 }
 
-function renderPartnerTrend(rows, p1, p2) {
+function renderPartnerTrend(rows, p1, p2, selectedYear) {
   const ctx = canvas("partner-trend");
   if (!ctx) return;
   if (!rows || !rows.length) return chartEmpty("partner-trend", "Select two partners with time-series coverage.");
@@ -453,16 +453,40 @@ function renderPartnerTrend(rows, p1, p2) {
     return found ? found.share_pct : null;
   });
 
+  const p1Label = (typeof ISO3_NAMES !== "undefined" && ISO3_NAMES[p1]) || p1;
+  const p2Label = (typeof ISO3_NAMES !== "undefined" && ISO3_NAMES[p2]) || p2;
+
+  const yearMarkerPlugin = {
+    id: "yearMarker",
+    afterDraw(chart) {
+      const idx = years.indexOf(Number(selectedYear));
+      if (idx < 0) return;
+      const x = chart.scales.x.getPixelForValue(idx);
+      const { top, bottom } = chart.chartArea;
+      const c = chart.ctx;
+      c.save();
+      c.setLineDash([4, 3]);
+      c.strokeStyle = "rgba(255,255,255,0.35)";
+      c.lineWidth = 1.5;
+      c.beginPath();
+      c.moveTo(x, top);
+      c.lineTo(x, bottom);
+      c.stroke();
+      c.restore();
+    },
+  };
+
   chartStore["partner-trend"] = new Chart(ctx, {
     type: "line",
     data: {
       labels: years,
       datasets: [
-        { label: p1, data: dataFor(p1), borderColor: COLORS.exports, backgroundColor: COLORS.exports, tension: 0.25, spanGaps: true, pointRadius: 2 },
-        { label: p2, data: dataFor(p2), borderColor: COLORS.imports, backgroundColor: COLORS.imports, tension: 0.25, spanGaps: true, pointRadius: 2 },
+        { label: p1Label, data: dataFor(p1), borderColor: COLORS.exports, backgroundColor: COLORS.exports, tension: 0.25, spanGaps: true, pointRadius: 2 },
+        { label: p2Label, data: dataFor(p2), borderColor: COLORS.imports, backgroundColor: COLORS.imports, tension: 0.25, spanGaps: true, pointRadius: 2 },
       ],
     },
     options: lineOptions("Partner share of total trade (%)", "Share (%)"),
+    plugins: [yearMarkerPlugin],
   });
 }
 

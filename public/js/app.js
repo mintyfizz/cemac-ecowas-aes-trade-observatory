@@ -310,7 +310,10 @@ async function loadPartners(version) {
 
   const p1El = document.getElementById("p1-select");
   const p2El = document.getElementById("p2-select");
-  const options = rows.map(row => `<option value="${escapeHTML(row.counterpart_iso3)}">${escapeHTML(row.counterpart_iso3)}</option>`).join("");
+  const options = rows.map(row => {
+    const label = (typeof ISO3_NAMES !== "undefined" && ISO3_NAMES[row.counterpart_iso3]) || row.counterpart_name || row.counterpart_iso3;
+    return `<option value="${escapeHTML(row.counterpart_iso3)}">${escapeHTML(label)}</option>`;
+  }).join("");
   p1El.innerHTML = options;
   p2El.innerHTML = options;
 
@@ -324,15 +327,20 @@ async function loadPartners(version) {
 
 async function loadPartnerTrend(version = State.loadVersion) {
   if (!State.p1 || !State.p2) return;
+  // Capture at call-time so the rendered labels always match the fetched data,
+  // even if the user changes a dropdown while the request is in-flight.
+  const p1 = State.p1;
+  const p2 = State.p2;
+  const year = State.year;
   const params = new URLSearchParams({
     bloc: State.bloc,
-    partner1: State.p1,
-    partner2: State.p2,
+    partner1: p1,
+    partner2: p2,
     ...(State.country ? { country: State.country } : {}),
   });
   const rows = await fetchJSON(`/api/partner-history?${params}`);
   if (!isFresh(version)) return;
-  renderPartnerTrend(rows, State.p1, State.p2);
+  renderPartnerTrend(rows, p1, p2, year);
 }
 
 async function loadConcentration(version) {
