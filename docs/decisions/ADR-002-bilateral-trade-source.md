@@ -43,6 +43,16 @@ The notebook extracts:
 
 UN Comtrade is removed from the active Week 2 path.
 
+## Follow-up note, May 22, 2026
+
+A Trading Economics public-page fallback was added in
+`extraction/extract/tradingeconomics_trade_page_extract.py` using a
+`tedata`-style HTML table scrape. This is not a replacement for IMF IMTS in
+the production dashboard. The public pages expose latest available partner
+tables with uneven coverage by country and year; they are useful for spot
+checks and emergency diagnostics, but not for the full historical 1990-2024
+partner-dependency layer.
+
 ## Consequences
 
 **Positive:**

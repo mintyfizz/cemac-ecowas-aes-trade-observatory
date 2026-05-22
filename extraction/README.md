@@ -10,6 +10,44 @@ The active bilateral trade source is now IMF IMTS, implemented directly in
 `04_bronze_imts_extract.ipynb`. It writes `bronze.bilateral_trade_raw` with
 all available partner rows for the 21 project countries.
 
+## Trading Economics public-page fallback
+
+Trading Economics also publishes visible country trade partner tables, for
+example `exports-by-country` and `imports-by-country`. The extractor
+`extraction/extract/tradingeconomics_trade_page_extract.py` uses a
+`tedata`-style public-page scrape: it requests those pages, parses the HTML
+table shown in the browser, and writes the rows to JSONL.
+
+This is intentionally a diagnostic fallback, not the canonical dashboard
+source. The public pages expose latest available partner-table rows, not a
+complete 1990-2024 historical panel. Use the IMF IMTS marts for production
+partner-dependency charts unless a later source decision promotes Trading
+Economics API data to the core pipeline.
+
+Run a single-country check from the repository root:
+
+```bash
+python3 extraction/extract/tradingeconomics_trade_page_extract.py \
+  --reporter-codes COG \
+  --flows export import \
+  --out data/raw/tradingeconomics/cog_te_trade_pages_latest.jsonl
+```
+
+Run all project countries:
+
+```bash
+python3 extraction/extract/tradingeconomics_trade_page_extract.py \
+  --all-cemac-ecowas \
+  --out data/raw/tradingeconomics/cemac_ecowas_te_trade_pages_latest.jsonl
+```
+
+Each JSONL line is one reporter-flow pair. The `payload` includes the partner
+name, raw page value, parsed USD value, reported year, and a `Total` row marked
+with `is_total=true`. Missing values remain `null`. If Trading Economics shows
+a generic country trade table instead of the partner-by-country table, the
+extractor writes an explicit `status="no_partner_table"` record with an empty
+payload so the coverage gap is visible.
+
 ## ACLED
 
 Databricks Free Edition serverless also failed DNS resolution for
