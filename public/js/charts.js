@@ -634,35 +634,104 @@ function renderGrowth(rows, state) {
 }
 
 function renderStructureTree(overview) {
-  const el = document.getElementById("structure-tree");
-  if (!el) return;
+  const ctx = canvas("exposure-chart");
+  const note = document.getElementById("exposure-note");
+  if (!ctx) return;
+  ctx.parentElement?.querySelectorAll(".empty-state").forEach(node => node.remove());
+
   const exportVal = Number(overview.exports_billions_usd) || 0;
   const importVal = Number(overview.imports_billions_usd) || 0;
-  const total = Math.max(exportVal + importVal, 1);
   const balance = Number(overview.trade_balance_billions_usd);
   const gdp = Number(overview.gdp_current_usd_billions);
-  const exportShare = total > 0 ? exportVal / total * 100 : null;
-  const importShare = total > 0 ? importVal / total * 100 : null;
+  const exportsPct = Number.isFinite(Number(overview.exports_pct_gdp))
+    ? Number(overview.exports_pct_gdp)
+    : (Number.isFinite(gdp) && gdp !== 0 ? exportVal / gdp * 100 : null);
+  const importsPct = Number.isFinite(Number(overview.imports_pct_gdp))
+    ? Number(overview.imports_pct_gdp)
+    : (Number.isFinite(gdp) && gdp !== 0 ? importVal / gdp * 100 : null);
   const balancePctGdp = Number.isFinite(balance) && Number.isFinite(gdp) && gdp !== 0 ? balance / gdp * 100 : null;
-  const openness = Number(overview.trade_openness_pct_gdp);
-  const opennessBand = Number.isFinite(openness)
-    ? (openness >= 100 ? "highly open" : openness >= 60 ? "moderately open" : "relatively closed")
-    : "no openness score";
-  const cards = [
-    { label: "Exports", value: shortMoneyB(exportVal), desc: `${fmtPct(overview.exports_pct_gdp)} of GDP · ${fmtPct(exportShare)} of trade`, tone: "good" },
-    { label: "Imports", value: shortMoneyB(importVal), desc: `${fmtPct(overview.imports_pct_gdp)} of GDP · ${fmtPct(importShare)} of trade`, tone: "accent" },
-    { label: "Trade balance", value: Number.isFinite(balance) ? shortMoneyB(balance) : "--", desc: `${fmtPct(balancePctGdp)} of GDP`, tone: balance >= 0 ? "good" : "bad" },
-    { label: "Openness", value: fmtPct(overview.trade_openness_pct_gdp), desc: opennessBand, tone: "accent" },
-    { label: "Main partner share", value: fmtPct(overview.top_partner_share_pct), desc: `${escapeHTML(overview.main_partner_iso3 || "--")} share of total trade`, tone: "accent" },
-    { label: "Partner concentration", value: fmtPlain(overview.hhi, 3), desc: hhiDescription(overview.hhi), tone: "accent" },
+
+  const rows = [
+    { label: "Exports / GDP", pct: exportsPct, usd: exportVal, color: COLORS.exports },
+    { label: "Imports / GDP", pct: importsPct, usd: importVal, color: COLORS.imports },
+    { label: "Balance / GDP", pct: balancePctGdp, usd: balance, color: balance >= 0 ? COLORS.exports : COLORS.danger },
   ];
-  el.innerHTML = cards.map(card => `
-    <div class="exposure-card ${card.tone}">
-      <div class="lbl">${escapeHTML(card.label)}</div>
-      <div class="val">${escapeHTML(card.value)}</div>
-      <div class="desc">${card.desc}</div>
-    </div>
-  `).join("");
+  const validRows = rows.filter(row => Number.isFinite(row.pct));
+  if (!validRows.length) {
+    if (note) note.textContent = "";
+    return chartEmpty("exposure-chart", "No trade exposure data.");
+  }
+
+  const minValue = Math.min(0, ...validRows.map(row => row.pct));
+  const maxValue = Math.max(0, ...validRows.map(row => row.pct));
+  const range = Math.max(maxValue - minValue, 20);
+  const axisMin = Math.floor((minValue - range * 0.08) / 10) * 10;
+  const axisMax = Math.ceil((maxValue + range * 0.12) / 10) * 10;
+
+  if (note) {
+    note.textContent = `Openness = exports + imports: ${fmtPct(overview.trade_openness_pct_gdp)} of GDP. Balance = exports - imports.`;
+  }
+
+  chartStore["exposure-chart"] = new Chart(ctx, {
+    type: "bar",
+    data: {
+      labels: validRows.map(row => row.label),
+      datasets: [{
+        label: "% of GDP",
+        data: validRows.map(row => row.pct),
+        backgroundColor: validRows.map(row => row.color),
+        borderRadius: 6,
+        borderSkipped: false,
+        barPercentage: 0.68,
+        categoryPercentage: 0.7,
+        customRows: validRows,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      indexAxis: "y",
+      interaction: { mode: "nearest", axis: "y", intersect: false },
+      hover: { mode: "nearest", intersect: false },
+      plugins: {
+        legend: { display: false },
+        title: {
+          display: true,
+          text: "Trade exposure as share of GDP",
+          color: COLORS.text,
+          font: { size: 12, weight: "500" },
+        },
+        tooltip: {
+          backgroundColor: "#11120f",
+          borderColor: "#55564f",
+          borderWidth: 1,
+          displayColors: false,
+          callbacks: {
+            title: items => items.length ? items[0].label : "",
+            label: item => `${fmtPct(item.parsed.x)} of GDP`,
+            afterLabel: item => {
+              const row = item.dataset.customRows?.[item.dataIndex];
+              return row ? `${shortMoneyB(row.usd)} current USD` : "";
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          min: axisMin,
+          max: axisMax,
+          grid: { color: COLORS.grid },
+          ticks: { color: COLORS.text, callback: value => `${value}%` },
+          title: { display: true, text: "% of GDP", color: COLORS.text },
+        },
+        y: {
+          grid: { color: "rgba(0,0,0,0)" },
+          ticks: { color: COLORS.text },
+        },
+      },
+    },
+  });
 }
 
 function renderConflict(rows) {
@@ -819,21 +888,22 @@ function renderProducts(rows, flow) {
   const el = canvas("products-chart");
   if (!el) return;
 
-  const top = rows.slice(0, 12).reverse();
+  const top = rows.slice(0, 12);
   const color = flow === "export" ? COLORS.exports : COLORS.imports;
   const barColor = color + "cc";
   const borderColor = color;
 
   const labels = top.map(r => {
     const desc = r.hs2_description || `HS ${r.hs2_code}`;
-    return desc.length > 50 ? desc.slice(0, 47) + "…" : desc;
+    const label = `HS ${r.hs2_code} · ${desc}`;
+    return label.length > 54 ? label.slice(0, 51) + "…" : label;
   });
   const values = top.map(r => r.trade_value_billions_usd ?? 0);
   const shares = top.map(r => r.hs2_share_pct ?? 0);
   const codes  = top.map(r => r.hs2_code);
   const descs  = top.map(r => r.hs2_description || `HS ${r.hs2_code}`);
 
-  new Chart(el, {
+  chartStore["products-chart"] = new Chart(el, {
     type: "bar",
     data: {
       labels,
@@ -853,13 +923,17 @@ function renderProducts(rows, flow) {
       plugins: {
         legend: { display: false },
         tooltip: {
+          backgroundColor: "#11120f",
+          borderColor: "#55564f",
+          borderWidth: 1,
           callbacks: {
             title: ctx => `HS ${codes[ctx[0].dataIndex]}: ${descs[ctx[0].dataIndex]}`,
             label: ctx => {
               const val = ctx.parsed.x;
               const share = shares[ctx.dataIndex];
-              return ` $${val.toFixed(2)}B  (${share.toFixed(1)}%)`;
+              return `Trade value: $${val.toFixed(2)}B`;
             },
+            afterLabel: ctx => `Share of ${flow}s: ${shares[ctx.dataIndex].toFixed(1)}%`,
           },
         },
       },

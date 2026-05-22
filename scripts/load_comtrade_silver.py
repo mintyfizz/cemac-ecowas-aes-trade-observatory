@@ -219,12 +219,12 @@ def load_and_aggregate(jsonl_path: str):
             reporters.add(reporter)
 
             for row in d.get("payload", []):
-                if row.get("is_aggregate"):
-                    continue
-                # This dataset contains world-total rows (partner_iso3 = "W00").
-                # W00 rows represent total exports/imports across all partners —
-                # exactly what the HS2 product-structure chart needs.
-                # We intentionally include W00 rows (no partner filter).
+                # All rows in this file are W00 (world-total), which is what the
+                # HS2 product-structure chart needs. The Comtrade API changed its
+                # is_aggregate flag for W00 rows between extractions: 1993-2016
+                # records have is_aggregate=False, 2017+ have is_aggregate=True.
+                # We skip the is_aggregate check entirely since there are no
+                # bilateral (non-W00) rows in this file to accidentally include.
 
                 coverage_raw[(reporter, year)] += 1
 

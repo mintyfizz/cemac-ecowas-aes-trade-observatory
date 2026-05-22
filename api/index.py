@@ -673,93 +673,144 @@ async def get_products(
             raise HTTPException(400, "flow must be 'export' or 'import'")
 
         if country:
-            rows = dbq(
-                f"""
-                SELECT hs2_code, hs2_description,
-                       trade_value_billions_usd, hs2_share_pct
-                FROM {CATALOG}.gold.product_trade_hs2
-                WHERE reporter_iso3 = ? AND year = ? AND flow_type = ?
-                ORDER BY trade_value_billions_usd DESC NULLS LAST
-                LIMIT 15
-                """,
-                [country, year, flow],
-            )
+            def country_product_rows(target_year: int) -> list[dict]:
+                return dbq(
+                    f"""
+                    SELECT hs2_code, hs2_description,
+                           trade_value_billions_usd, hs2_share_pct
+                    FROM {CATALOG}.gold.product_trade_hs2
+                    WHERE reporter_iso3 = ? AND year = ? AND flow_type = ?
+                    ORDER BY trade_value_billions_usd DESC NULLS LAST
+                    LIMIT 15
+                    """,
+                    [country, target_year, flow],
+                )
+
+            rows = country_product_rows(year)
+            data_year = year
+            fallback_note = None
             if not rows:
                 latest_result = dbq(
                     f"""
-                    SELECT MAX(year) AS latest_year
+                    SELECT
+                        MAX(CASE WHEN year <= ? THEN year END) AS prior_year,
+                        MAX(year) AS latest_year
                     FROM {CATALOG}.gold.product_trade_hs2
                     WHERE reporter_iso3 = ? AND flow_type = ?
                     """,
-                    [country, flow],
+                    [year, country, flow],
                 )
-                latest_year = (latest_result[0].get("latest_year") if latest_result else None)
+                prior_year = latest_result[0].get("prior_year") if latest_result else None
+                latest_year = latest_result[0].get("latest_year") if latest_result else None
+                data_year = prior_year or latest_year
+                rows = country_product_rows(data_year) if data_year else []
+                fallback_note = (
+                    f"Selected year {year} has no good HS2 Comtrade coverage; "
+                    f"showing {data_year}, the latest available product year for this scope."
+                    if rows else None
+                )
+            if not rows:
                 return {
                     "available": False,
                     "coverage_note": f"No Comtrade product data for {country} · {year}",
                     "rows": [],
-                    "latest_year": latest_year,
+                    "latest_year": data_year,
                 }
             return {
                 "available": True,
-                "coverage_note": f"UN Comtrade · {COUNTRY_NAMES.get(country, country)} · {year}",
+                "coverage_note": f"UN Comtrade · {COUNTRY_NAMES.get(country, country)} · product year {data_year}",
+                "requested_year": year,
+                "data_year": data_year,
+                "is_fallback_year": data_year != year,
+                "fallback_note": fallback_note,
                 "rows": rows,
             }
         else:
             members = BLOCS[bloc]
             placeholders = ", ".join(["?"] * len(members))
-            rows = dbq(
-                f"""
-                WITH agg AS (
-                    SELECT hs2_code, hs2_description,
-                           SUM(trade_value_billions_usd) AS trade_value_billions_usd
+
+            def bloc_product_rows(target_year: int) -> list[dict]:
+                return dbq(
+                    f"""
+                    WITH agg AS (
+                        SELECT hs2_code, hs2_description,
+                               SUM(trade_value_billions_usd) AS trade_value_billions_usd
+                        FROM {CATALOG}.gold.product_trade_hs2
+                        WHERE reporter_iso3 IN ({placeholders})
+                          AND year = ?
+                          AND flow_type = ?
+                        GROUP BY hs2_code, hs2_description
+                    ),
+                    grand AS (
+                        SELECT SUM(trade_value_billions_usd) AS total FROM agg
+                    )
+                    SELECT a.hs2_code, a.hs2_description,
+                           a.trade_value_billions_usd,
+                           ROUND(100.0 * a.trade_value_billions_usd / NULLIF(g.total, 0), 1)
+                               AS hs2_share_pct
+                    FROM agg a CROSS JOIN grand g
+                    ORDER BY a.trade_value_billions_usd DESC NULLS LAST
+                    LIMIT 15
+                    """,
+                    [*members, target_year, flow],
+                )
+
+            def reporter_count(target_year: int) -> int:
+                n_reporters_result = dbq(
+                    f"""
+                    SELECT COUNT(DISTINCT reporter_iso3) AS n_reporters
                     FROM {CATALOG}.gold.product_trade_hs2
                     WHERE reporter_iso3 IN ({placeholders})
                       AND year = ?
                       AND flow_type = ?
-                    GROUP BY hs2_code, hs2_description
-                ),
-                grand AS (
-                    SELECT SUM(trade_value_billions_usd) AS total FROM agg
+                    """,
+                    [*members, target_year, flow],
                 )
-                SELECT a.hs2_code, a.hs2_description,
-                       a.trade_value_billions_usd,
-                       ROUND(100.0 * a.trade_value_billions_usd / NULLIF(g.total, 0), 1)
-                           AS hs2_share_pct
-                FROM agg a CROSS JOIN grand g
-                ORDER BY a.trade_value_billions_usd DESC NULLS LAST
-                LIMIT 15
-                """,
-                [*members, year, flow],
-            )
-            n_reporters_result = dbq(
-                f"""
-                SELECT COUNT(DISTINCT reporter_iso3) AS n_reporters
-                FROM {CATALOG}.gold.product_trade_hs2
-                WHERE reporter_iso3 IN ({placeholders})
-                  AND year = ?
-                  AND flow_type = ?
-                """,
-                [*members, year, flow],
-            )
-            n_reporters = (n_reporters_result[0].get("n_reporters") or 0) if n_reporters_result else 0
-            coverage_note = (
-                f"UN Comtrade · {n_reporters} of {len(members)} {bloc} reporters "
-                f"with coverage · {year}"
-            )
+                return (n_reporters_result[0].get("n_reporters") or 0) if n_reporters_result else 0
+
+            rows = bloc_product_rows(year)
+            data_year = year
+            fallback_note = None
             if not rows:
                 latest_result = dbq(
                     f"""
-                    SELECT MAX(year) AS latest_year
+                    SELECT
+                        MAX(CASE WHEN year <= ? THEN year END) AS prior_year,
+                        MAX(year) AS latest_year
                     FROM {CATALOG}.gold.product_trade_hs2
                     WHERE reporter_iso3 IN ({placeholders})
                       AND flow_type = ?
                     """,
-                    [*members, flow],
+                    [year, *members, flow],
                 )
-                latest_year = (latest_result[0].get("latest_year") if latest_result else None)
-                return {"available": False, "coverage_note": coverage_note, "rows": [], "latest_year": latest_year}
-            return {"available": True, "coverage_note": coverage_note, "rows": rows}
+                prior_year = latest_result[0].get("prior_year") if latest_result else None
+                latest_year = latest_result[0].get("latest_year") if latest_result else None
+                data_year = prior_year or latest_year
+                rows = bloc_product_rows(data_year) if data_year else []
+                fallback_note = (
+                    f"Selected year {year} has no good HS2 Comtrade coverage; "
+                    f"showing {data_year}, the latest available product year for this scope."
+                    if rows else None
+                )
+
+            n_reporters = reporter_count(data_year) if rows else 0
+            coverage_note = (
+                f"UN Comtrade · {n_reporters} of {len(members)} {bloc} reporters "
+                f"with coverage · product year {data_year}"
+                if rows else
+                f"UN Comtrade · 0 of {len(members)} {bloc} reporters with coverage · {year}"
+            )
+            if not rows:
+                return {"available": False, "coverage_note": coverage_note, "rows": [], "latest_year": data_year}
+            return {
+                "available": True,
+                "coverage_note": coverage_note,
+                "requested_year": year,
+                "data_year": data_year,
+                "is_fallback_year": data_year != year,
+                "fallback_note": fallback_note,
+                "rows": rows,
+            }
     except HTTPException:
         raise
     except Exception as exc:

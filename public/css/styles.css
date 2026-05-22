@@ -507,6 +507,10 @@ button, select {
   height: 280px !important;
 }
 
+#exposure-chart {
+  height: 276px !important;
+}
+
 .partner-selectors {
   display: flex;
   gap: 10px;
@@ -601,62 +605,6 @@ button, select {
 .tree-cell.small {
   grid-column: span 2;
   grid-row: span 1;
-}
-
-.exposure-panel {
-  min-height: 276px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.exposure-card {
-  background: var(--surface-2);
-  border: 0.5px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 10px 11px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  min-height: 84px;
-}
-
-.exposure-card.wide {
-  grid-column: 1 / -1;
-  min-height: 70px;
-}
-
-.exposure-card .lbl {
-  color: var(--muted);
-  font-size: 10px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  font-weight: 650;
-}
-
-.exposure-card .val {
-  color: var(--text);
-  font-size: 19px;
-  font-weight: 700;
-  line-height: 1.1;
-  margin: 4px 0 3px;
-}
-
-.exposure-card .desc {
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.exposure-card.good {
-  border-color: rgba(126, 214, 109, 0.28);
-}
-
-.exposure-card.bad {
-  border-color: rgba(239, 118, 104, 0.32);
-}
-
-.exposure-card.accent {
-  border-color: rgba(247, 210, 93, 0.25);
 }
 
 .health-grid {
@@ -816,6 +764,16 @@ button, select {
 
 #section-products .chart-box canvas { height: 420px !important; }
 
+.product-empty {
+  min-height: 260px;
+  align-items: center;
+  justify-content: center;
+}
+
+.product-empty[hidden] {
+  display: none;
+}
+
 .year-jump-btn {
   background: transparent;
   border: 1px solid var(--text-muted);
@@ -946,8 +904,7 @@ button, select {
     grid-template-columns: 68px minmax(0, 1fr) 40px;
   }
 
-  .tree,
-  .exposure-panel {
+  .tree {
     grid-template-columns: repeat(2, 1fr);
     grid-template-rows: none;
     height: auto;
@@ -956,9 +913,7 @@ button, select {
   .tree-cell,
   .tree-cell.large,
   .tree-cell.medium,
-  .tree-cell.small,
-  .exposure-card,
-  .exposure-card.wide {
+  .tree-cell.small {
     grid-column: span 1;
     grid-row: span 1;
     min-height: 86px;

@@ -395,7 +395,17 @@ async function loadProducts(version) {
   const titleEl = document.getElementById("products-title");
   const subEl   = document.getElementById("products-sub");
   const noteEl  = document.getElementById("products-note");
+  const emptyEl = document.getElementById("products-empty");
+  const chartEl = document.getElementById("products-chart");
   if (titleEl) titleEl.textContent = `${scopeName()} · Top ${State.productsFlow} sectors (HS2)`;
+  if (subEl) subEl.textContent = `Loading ${State.productsFlow} product sectors...`;
+  if (noteEl) noteEl.textContent = "";
+  if (emptyEl) {
+    emptyEl.hidden = true;
+    emptyEl.textContent = "";
+  }
+  if (chartEl) chartEl.style.display = "";
+
   const params = new URLSearchParams({
     bloc: State.bloc,
     year: State.year,
@@ -404,28 +414,26 @@ async function loadProducts(version) {
   });
   const data = await fetchJSON(`/api/products?${params}`);
   if (!isFresh(version)) return;
-  if (noteEl) noteEl.textContent = data.coverage_note || "";
-  const el = document.getElementById("products-chart");
   if (!data.available) {
     destroyChart("products-chart");
-    if (el) el.style.display = "none";
-    const baseNote = data.coverage_note || "Product data not available for this selection.";
-    if (subEl) {
-      if (data.latest_year) {
-        subEl.innerHTML = `${baseNote} &middot; <button class="year-jump-btn" type="button">Load ${data.latest_year}</button>`;
-        subEl.querySelector(".year-jump-btn").addEventListener("click", () => {
-          const sel = document.getElementById("year-select");
-          if (sel) { sel.value = String(data.latest_year); sel.dispatchEvent(new Event("change", { bubbles: true })); }
-        });
-      } else {
-        subEl.textContent = baseNote;
-      }
+    if (chartEl) chartEl.style.display = "none";
+    if (subEl) subEl.textContent = data.coverage_note || "Product data not available for this selection.";
+    if (emptyEl) {
+      emptyEl.hidden = false;
+      emptyEl.textContent = data.latest_year
+        ? `No selected-year HS2 product coverage. Latest available product year is ${data.latest_year}.`
+        : "No HS2 product coverage is available for this selection.";
     }
     if (noteEl) noteEl.textContent = "";
     return;
   }
-  if (el) el.style.display = "";
-  if (subEl) subEl.textContent = data.coverage_note || `UN Comtrade · ${State.year}`;
+  if (chartEl) chartEl.style.display = "";
+  if (emptyEl) emptyEl.hidden = true;
+  if (subEl) subEl.textContent = data.coverage_note || `UN Comtrade · product year ${data.data_year || State.year}`;
+  if (noteEl) {
+    noteEl.textContent = data.fallback_note
+      || "Reporter-submitted UN Comtrade HS2 values. Shares are within the displayed flow and scope.";
+  }
   renderProducts(data.rows, State.productsFlow);
 }
 
