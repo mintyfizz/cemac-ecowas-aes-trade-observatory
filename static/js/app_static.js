@@ -21,10 +21,13 @@
 
 const BLOCS = {
   CEMAC:  ["CMR", "CAF", "TCD", "COG", "GNQ", "GAB"],
-  ECOWAS: ["BEN", "BFA", "CPV", "CIV", "GMB", "GHA", "GIN", "GNB",
-           "LBR", "MLI", "NER", "NGA", "SEN", "SLE", "TGO"],
+  ECOWAS: ["BEN", "CPV", "CIV", "GMB", "GHA", "GIN", "GNB",
+           "LBR", "NGA", "SEN", "SLE", "TGO"],
   AES:    ["MLI", "BFA", "NER"],
 };
+
+const PRODUCT_REPORTER_COVERAGE_THRESHOLD = 0.5;
+const PRODUCT_VALUE_COVERAGE_THRESHOLD = 0.5;
 
 const COUNTRY_NAMES = {
   CMR: "Cameroon", CAF: "Central African Republic", TCD: "Chad",
@@ -99,7 +102,8 @@ const NUM_KEYS = new Set([
   "fsi_year", "window_start_year", "window_end_year",
   "cohesion_score", "economic_score", "political_score", "social_cross_cutting_score",
   "share_pct", "index_value",
-  "trade_value_billions_usd", "hs2_share_pct", "n_reporters",
+  "trade_value_billions_usd", "trade_value_usd", "reporter_year_flow_total_usd",
+  "hs2_share_pct", "n_reporters",
 ]);
 
 function coerceNums(row) {
@@ -144,6 +148,36 @@ function localMap(metric, year) {
     }));
 }
 
+function analyticalScopeRows(bloc, year) {
+  return DB.timeseries.filter(r => r.analytical_bloc_code === bloc && r.year === year);
+}
+
+function analyticalScopeMembers(bloc, year) {
+  return new Set(analyticalScopeRows(bloc, year).map(r => r.country_iso3));
+}
+
+function memberSetKey(bloc, year) {
+  return [...analyticalScopeMembers(bloc, year)].sort().join("|");
+}
+
+function comparablePreviousOverview(bloc, year, country) {
+  if (year <= 1990) return null;
+  if (country) return localOverview(bloc, year - 1, country);
+
+  const currentMembers = memberSetKey(bloc, year);
+  const previousMembers = memberSetKey(bloc, year - 1);
+  if (!currentMembers || currentMembers !== previousMembers) return null;
+  return localOverview(bloc, year - 1, null);
+}
+
+function latestAnalyticalYear(bloc) {
+  const years = DB.timeseries
+    .filter(r => r.analytical_bloc_code === bloc)
+    .map(r => r.year)
+    .filter(Number.isFinite);
+  return years.length ? Math.max(...years) : null;
+}
+
 // Overview for bloc=B and year=Y, optionally drilled into country=C.
 function localOverview(bloc, year, country) {
   if (country) {
@@ -154,6 +188,8 @@ function localOverview(bloc, year, country) {
     const top = validPartners[0] || {};
     const latestFsi = DB.fragility.find(r => r.country_iso3 === country) || {};
     const gdp = b.gdp_current_usd_billions || null;
+    const selectedYearFsi = b.fsi_total_score ?? null;
+    const fallbackFsi = selectedYearFsi == null ? (latestFsi.fsi_total_score ?? null) : null;
     return {
       total_trade_billions_usd: b.total_trade_billions_usd ?? null,
       exports_billions_usd: b.exports_billions_usd ?? null,
@@ -178,7 +214,9 @@ function localOverview(bloc, year, country) {
       fatalities: b.fatalities ?? null,
       violent_events: b.violent_events ?? null,
       fragility_band: b.fragility_band ?? null,
-      avg_fsi_score: b.fsi_total_score ?? latestFsi.fsi_total_score ?? null,
+      avg_fsi_score: selectedYearFsi ?? fallbackFsi,
+      fsi_is_latest_available: selectedYearFsi == null && fallbackFsi != null,
+      fsi_year: selectedYearFsi == null ? (latestFsi.fsi_year ?? null) : year,
       trade_openness_pct_gdp: b.trade_openness_pct_gdp ?? null,
       exports_pct_gdp: (b.exports_billions_usd != null && gdp) ? b.exports_billions_usd / gdp * 100 : null,
       imports_pct_gdp: (b.imports_billions_usd != null && gdp) ? b.imports_billions_usd / gdp * 100 : null,
@@ -232,10 +270,19 @@ function localOverview(bloc, year, country) {
   const totalVE    = sum("violent_events");
   const totalFat   = sum("fatalities");
 
-  let fsiSum = 0, fsiCount = 0;
+  let fsiSum = 0, fsiCount = 0, fsiFallbackCount = 0;
+  const fsiYearMap = Object.fromEntries(DB.fragility.map(r => [r.country_iso3, r.fsi_year]));
+  const fsiYears = [];
   for (const r of scoped) {
-    const v = r.fsi_total_score ?? fsiMap[r.country_iso3];
-    if (v != null) { fsiSum += v; fsiCount++; }
+    const selectedYearFsi = r.fsi_total_score ?? null;
+    const fallbackFsi = selectedYearFsi == null ? fsiMap[r.country_iso3] : null;
+    const v = selectedYearFsi ?? fallbackFsi;
+    if (v != null) {
+      fsiSum += v;
+      fsiCount++;
+      if (selectedYearFsi == null) fsiFallbackCount++;
+      fsiYears.push(selectedYearFsi == null ? fsiYearMap[r.country_iso3] : r.year);
+    }
   }
 
   return {
@@ -262,6 +309,8 @@ function localOverview(bloc, year, country) {
     fatalities_per_million: (totalFat != null && totalPop) ? totalFat / totalPop : null,
     fragility_band: null,
     avg_fsi_score: fsiCount ? fsiSum / fsiCount : null,
+    fsi_is_latest_available: fsiFallbackCount > 0,
+    fsi_year: fsiYears.length ? Math.max(...fsiYears.filter(Number.isFinite)) : null,
     trade_openness_pct_gdp: (totalTrade != null && totalGdp) ? totalTrade / totalGdp * 100 : null,
     exports_pct_gdp: (totalExports != null && totalGdp) ? totalExports / totalGdp * 100 : null,
     imports_pct_gdp: (totalImports != null && totalGdp) ? totalImports / totalGdp * 100 : null,
@@ -276,14 +325,14 @@ function localPartners(bloc, year, country) {
       .filter(r => r.country_iso3 === country && r.year === year && ISO3_RE.test(r.counterpart_iso3))
       .sort((a, z) => (a.partner_rank ?? 999) - (z.partner_rank ?? 999))
       .slice(0, 10)
-      .map(r => ({
+      .map((r, i) => ({
         counterpart_iso3: r.counterpart_iso3,
         counterpart_name: r.counterpart_name,
         exports_billions_usd: r.exports_billions_usd,
         imports_billions_usd: r.imports_billions_usd,
         total_trade_billions_usd: r.total_trade_billions_usd,
         total_trade_partner_share_pct: r.total_trade_partner_share_pct,
-        partner_rank: r.partner_rank,
+        partner_rank: i + 1,
       }));
   }
 
@@ -319,43 +368,89 @@ function localPartners(bloc, year, country) {
   }));
 }
 
-// Partner share history for bloc=B, partner1=P1, partner2=P2, optional country=C.
-function localPartnerHistory(bloc, partner1, partner2, country) {
-  const targets = new Set([partner1, partner2]);
-
+function partnerRowsForScope(bloc, year, country) {
   if (country) {
-    return DB.partners
-      .filter(r => r.country_iso3 === country && targets.has(r.counterpart_iso3) && ISO3_RE.test(r.counterpart_iso3))
-      .sort((a, z) => a.year - z.year)
-      .map(r => ({ year: r.year, counterpart_iso3: r.counterpart_iso3, share_pct: r.total_trade_partner_share_pct }));
+    return DB.partners.filter(r =>
+      r.country_iso3 === country &&
+      r.year === year &&
+      ISO3_RE.test(r.counterpart_iso3)
+    );
   }
-
-  const valid = DB.partners.filter(
-    r => r.analytical_bloc_code === bloc && ISO3_RE.test(r.counterpart_iso3),
+  return DB.partners.filter(r =>
+    r.analytical_bloc_code === bloc &&
+    r.year === year &&
+    ISO3_RE.test(r.counterpart_iso3)
   );
-  // Year totals from the country timeseries (includes all bilateral flows,
-  // not just the top-15 ISO3 partners) so shares are correctly denominated.
-  const yearTotals = {};
+}
+
+function tradeTotalForScope(bloc, year, country) {
+  if (country) {
+    return DB.timeseries.find(r => r.country_iso3 === country && r.year === year)?.total_trade_billions_usd ?? null;
+  }
+  let total = 0;
+  let seen = false;
   for (const r of DB.timeseries) {
-    if (r.analytical_bloc_code === bloc && r.total_trade_billions_usd != null) {
-      yearTotals[r.year] = (yearTotals[r.year] ?? 0) + r.total_trade_billions_usd;
+    if (r.analytical_bloc_code === bloc && r.year === year && r.total_trade_billions_usd != null) {
+      total += r.total_trade_billions_usd;
+      seen = true;
     }
   }
-  // Selected partner totals by year
-  const selected = valid.filter(r => targets.has(r.counterpart_iso3));
-  const partnerYearAgg = {};
-  for (const r of selected) {
-    const key = `${r.year}__${r.counterpart_iso3}`;
-    if (!partnerYearAgg[key]) partnerYearAgg[key] = { year: r.year, counterpart_iso3: r.counterpart_iso3, total: 0 };
-    partnerYearAgg[key].total += r.total_trade_billions_usd ?? 0;
+  return seen ? total : null;
+}
+
+function hhiForScope(bloc, year, country) {
+  if (country) {
+    return DB.timeseries.find(r => r.country_iso3 === country && r.year === year)?.total_trade_partner_hhi ?? null;
   }
-  return Object.values(partnerYearAgg)
-    .sort((a, z) => a.year - z.year)
-    .map(r => ({
-      year: r.year,
-      counterpart_iso3: r.counterpart_iso3,
-      share_pct: yearTotals[r.year] ? r.total / yearTotals[r.year] * 100 : null,
-    }));
+  let num = 0;
+  let den = 0;
+  for (const r of DB.timeseries) {
+    if (r.analytical_bloc_code === bloc && r.year === year && r.total_trade_partner_hhi != null && r.total_trade_billions_usd != null) {
+      num += r.total_trade_partner_hhi * r.total_trade_billions_usd;
+      den += r.total_trade_billions_usd;
+    }
+  }
+  return den ? num / den : null;
+}
+
+function localPartnerDependence(bloc, year, country) {
+  const years = [...new Set(DB.timeseries
+    .filter(r => country ? r.country_iso3 === country : r.analytical_bloc_code === bloc)
+    .map(r => r.year)
+    .filter(Number.isFinite))]
+    .sort((a, b) => a - b);
+
+  const series = years.map(y => {
+    const totalTrade = tradeTotalForScope(bloc, y, country);
+    const agg = {};
+    for (const r of partnerRowsForScope(bloc, y, country)) {
+      if (!agg[r.counterpart_iso3]) {
+        agg[r.counterpart_iso3] = {
+          iso3: r.counterpart_iso3,
+          name: r.counterpart_name,
+          total: 0,
+        };
+      }
+      agg[r.counterpart_iso3].total += r.total_trade_billions_usd ?? 0;
+    }
+    const ranked = Object.values(agg).sort((a, z) => z.total - a.total);
+    const top1 = ranked[0] || null;
+    const top3Total = ranked.slice(0, 3).reduce((sum, row) => sum + (row.total || 0), 0);
+    return {
+      year: y,
+      top_partner_iso3: top1?.iso3 ?? null,
+      top_partner_name: top1?.name ?? top1?.iso3 ?? null,
+      top_partner_trade_billions_usd: top1?.total ?? null,
+      top_partner_share_pct: (top1?.total != null && totalTrade) ? top1.total / totalTrade * 100 : null,
+      top3_share_pct: totalTrade ? top3Total / totalTrade * 100 : null,
+      hhi: hhiForScope(bloc, y, country),
+    };
+  });
+
+  return {
+    current: series.find(row => row.year === year) || null,
+    series,
+  };
 }
 
 // Concentration history for bloc=B and year=Y, optional country=C.
@@ -425,6 +520,8 @@ function localProducts(bloc, year, country, flow) {
       return {
         available: false,
         coverage_note: `No Comtrade product data for ${country} · ${year}`,
+        message: `No selected-year HS2 product coverage for ${countryName(country)}. Latest available ${selectedFlow} year is ${latestYear ?? "--"}.`,
+        scope_type: "country",
         rows: [],
         latest_year: latestYear,
       };
@@ -432,36 +529,44 @@ function localProducts(bloc, year, country, flow) {
 
     return {
       available: true,
-      coverage_note: `UN Comtrade · ${countryName(country)} · ${year}`,
+      coverage_note: `UN Comtrade · ${countryName(country)} · ${year} · reported HS2 ${selectedFlow}s`,
       data_year: year,
+      coverage_detail: "Country view uses reporter-submitted HS2 rows for the selected year.",
+      scope_type: "country",
       rows,
     };
   }
 
-  const members = new Set(BLOCS[bloc] || []);
-  const selected = DB.products
-    .filter(r => (
-      members.has(r.reporter_iso3) &&
-      r.year === year &&
-      r.flow_type === selectedFlow &&
-      r.trade_value_billions_usd != null
-    ));
-
-  if (!selected.length) {
-    const years = DB.products
-      .filter(r => members.has(r.reporter_iso3) && r.flow_type === selectedFlow)
-      .map(r => r.year)
-      .filter(Number.isFinite);
-    const latestYear = years.length ? Math.max(...years) : null;
+  const members = analyticalScopeMembers(bloc, year);
+  if (!members.size) {
     return {
       available: false,
-      coverage_note: `UN Comtrade · 0 of ${members.size} ${bloc} reporters with coverage · ${year}`,
+      coverage_note: `No ${bloc} analytical membership coverage · ${year}`,
+      message: `${bloc} is only available where the analytical split exists. Latest available split year is ${latestAnalyticalYear(bloc) ?? "--"}.`,
+      scope_type: "bloc",
       rows: [],
-      latest_year: latestYear,
+      latest_year: latestAnalyticalYear(bloc),
     };
   }
 
-  const reporters = new Set(selected.map(r => r.reporter_iso3).filter(Boolean));
+  const coverage = productCoverage(bloc, year, selectedFlow);
+  if (!coverage.passes) {
+    const latestUsableYear = latestRepresentativeProductYear(bloc, selectedFlow);
+    return {
+      available: false,
+      coverage_note: `Insufficient selected-year HS2 coverage · ${coverage.reporters.size} of ${members.size} ${bloc} reporters · ${year}`,
+      message: latestUsableYear
+        ? `Insufficient selected-year HS2 coverage for representative bloc composition. Latest representative ${selectedFlow} year is ${latestUsableYear}.`
+        : "Insufficient selected-year HS2 coverage for representative bloc composition. No representative HS2 year meets the 50% reporter and 50% value thresholds.",
+      rows: [],
+      latest_year: latestUsableYear,
+      scope_type: "bloc",
+      coverage,
+    };
+  }
+
+  const selected = coverage.rows;
+  const reporters = coverage.reporters;
   const byHs2 = new Map();
   for (const row of selected) {
     if (row.trade_value_billions_usd == null) continue;
@@ -487,19 +592,78 @@ function localProducts(bloc, year, country, flow) {
 
   return {
     available: true,
-    coverage_note: `UN Comtrade · ${reporters.size} of ${members.size} ${bloc} reporters with coverage · ${year}`,
+    coverage_note: `UN Comtrade · ${reporters.size} of ${members.size} ${bloc} reporters · ${year}`,
     data_year: year,
+    coverage_detail: `Reported HS2 ${selectedFlow} total covers ${fmtPct(coverage.valueCoveragePct, 0)} of ${bloc} ${selectedFlow}s.`,
+    scope_type: "bloc",
     rows,
   };
 }
 
+function productCoverage(bloc, year, flow) {
+  const members = analyticalScopeMembers(bloc, year);
+  const selected = DB.products
+    .filter(r => (
+      members.has(r.reporter_iso3) &&
+      r.year === year &&
+      r.flow_type === flow &&
+      r.trade_value_billions_usd != null
+    ));
+  const reporters = new Set(selected.map(r => r.reporter_iso3).filter(Boolean));
+  const scopeRows = analyticalScopeRows(bloc, year);
+  const scopeFlowTotal = scopeRows.reduce((sum, row) => {
+    const value = flow === "import" ? row.imports_billions_usd : row.exports_billions_usd;
+    return sum + (value ?? 0);
+  }, 0);
+  const reporterTotals = new Map();
+  for (const row of selected) {
+    const reporter = row.reporter_iso3;
+    if (!reporter) continue;
+    const totalFromSource = numberOrNull(row.reporter_year_flow_total_usd);
+    const current = reporterTotals.get(reporter) ?? 0;
+    if (totalFromSource != null) {
+      reporterTotals.set(reporter, Math.max(current, totalFromSource / 1e9));
+    } else {
+      reporterTotals.set(reporter, current + (row.trade_value_billions_usd ?? 0));
+    }
+  }
+  const reportedFlowTotal = [...reporterTotals.values()].reduce((sum, value) => sum + value, 0);
+  const reporterCoverage = members.size ? reporters.size / members.size : 0;
+  const valueCoverage = scopeFlowTotal ? reportedFlowTotal / scopeFlowTotal : 0;
+  return {
+    rows: selected,
+    members,
+    reporters,
+    scopeFlowTotal,
+    reportedFlowTotal,
+    reporterCoverage,
+    valueCoverage,
+    valueCoveragePct: valueCoverage * 100,
+    passes: reporterCoverage >= PRODUCT_REPORTER_COVERAGE_THRESHOLD &&
+      valueCoverage >= PRODUCT_VALUE_COVERAGE_THRESHOLD,
+  };
+}
+
+function latestRepresentativeProductYear(bloc, flow) {
+  const years = [...new Set(DB.timeseries
+    .filter(r => r.analytical_bloc_code === bloc)
+    .map(r => r.year)
+    .filter(Number.isFinite))]
+    .sort((a, z) => z - a);
+  for (const candidateYear of years) {
+    if (productCoverage(bloc, candidateYear, flow).passes) return candidateYear;
+  }
+  return null;
+}
+
 // Indexed trade growth for bloc=B, optional country=C.
-function localGrowth(bloc, country) {
+function localGrowth(bloc, country, year) {
   let scoped;
   if (country) {
     scoped = DB.timeseries.filter(r => r.country_iso3 === country);
   } else {
-    const members = new Set(BLOCS[bloc] || []);
+    const members = analyticalScopeMembers(bloc, year);
+    if (!members.size) return [];
     scoped = DB.timeseries.filter(r => members.has(r.country_iso3));
   }
 
@@ -705,27 +869,36 @@ function fmtPop(value) {
   return `${n.toFixed(n >= 10 ? 1 : 2)}M`;
 }
 
-function deltaBadge(value, digits = 1, suffix = "") {
+function deltaBadge(value, digits = 1, suffix = "", direction = "higher-good") {
   if (value === null || value === undefined || value === "") return "";
   const n = Number(value);
   if (!Number.isFinite(n)) return "";
-  const tone = n > 0 ? "up" : n < 0 ? "down" : "flat";
+  let tone = "flat";
+  if (n !== 0 && direction !== "neutral") {
+    if (direction === "higher-bad") {
+      tone = n > 0 ? "down" : "up";
+    } else if (direction === "lower-good") {
+      tone = n < 0 ? "up" : "down";
+    } else {
+      tone = n > 0 ? "up" : "down";
+    }
+  }
   const arrow = n > 0 ? "▲" : n < 0 ? "▼" : "•";
   return `<span class="delta-badge ${tone}">${arrow} ${Math.abs(n).toFixed(digits)}${suffix}</span>`;
 }
 
-function metricDelta(current, previous, kind = "pct", digits = 1, suffix = "") {
+function metricDelta(current, previous, kind = "pct", digits = 1, suffix = "", direction = "higher-good") {
   const curr = numberOrNull(current);
   const prev = numberOrNull(previous);
   if (curr == null || prev == null) return "";
   if (kind === "pct") {
     if (prev === 0) return "";
-    return deltaBadge(((curr - prev) / Math.abs(prev)) * 100, digits, "% YoY");
+    return deltaBadge(((curr - prev) / Math.abs(prev)) * 100, digits, "% YoY", direction);
   }
   if (kind === "pp") {
-    return deltaBadge(curr - prev, digits, " pp YoY");
+    return deltaBadge(curr - prev, digits, " pp YoY", direction);
   }
-  return deltaBadge(curr - prev, digits, `${suffix} YoY`);
+  return deltaBadge(curr - prev, digits, `${suffix} YoY`, direction);
 }
 
 function infoLine(deltaHtml, text) {
@@ -789,26 +962,32 @@ function renderOverview(overview, previous = null) {
   const partnerName = overview.main_partner_name || partner;
   const conflict = overview.fatalities_per_million ?? overview.violent_events_per_million;
   const prevConflict = previous ? (previous.fatalities_per_million ?? previous.violent_events_per_million) : null;
+  const fsiDelta = overview.fsi_is_latest_available
+    ? ""
+    : metricDelta(overview.avg_fsi_score, previous?.avg_fsi_score, "abs", 1, " pts", "higher-bad");
+  const fsiNote = overview.fsi_is_latest_available
+    ? `latest FSI ${overview.fsi_year ?? "available"}`
+    : (overview.fragility_band || "selected-year FSI where available");
   const partnerNote = previous?.main_partner_iso3 && previous.main_partner_iso3 !== partner
     ? infoLine("", `was ${previous.main_partner_iso3} in ${State.year - 1}`)
-    : infoLine(metricDelta(overview.top_partner_share_pct, previous?.top_partner_share_pct, "pp", 1), `${partnerName} · ${fmtPct(overview.top_partner_share_pct)} of trade`);
+    : infoLine(metricDelta(overview.top_partner_share_pct, previous?.top_partner_share_pct, "pp", 1, "", "higher-bad"), `${partnerName} · ${fmtPct(overview.top_partner_share_pct)} of trade`);
 
   kpi("kpi-trade", "Total trade", shortMoneyB(overview.total_trade_billions_usd), infoLine(metricDelta(overview.total_trade_billions_usd, previous?.total_trade_billions_usd, "pct", 1), `USD billions, ${State.year}`));
   kpi("kpi-partner", "Main partner", partner, partnerNote);
-  kpi("kpi-hhi", "Trade concentration", fmtPlain(overview.hhi, 3), infoLine(metricDelta(overview.hhi, previous?.hhi, "abs", 3), hhiBand(overview.hhi)));
-  kpi("kpi-frag", "Fragility", fmtPlain(overview.avg_fsi_score, 1), fragBandPill(overview.fragility_band) + infoLine(metricDelta(overview.avg_fsi_score, previous?.avg_fsi_score, "abs", 1, " pts"), overview.fragility_band || "latest FSI where available"));
-  kpi("kpi-conflict", "Conflict intensity", fmtPlain(conflict, 1), infoLine(metricDelta(conflict, prevConflict, "abs", 1, " /m"), overview.fatalities_per_million == null ? "violent events / million" : "fatalities / million"));
-  kpi("kpi-open", "Trade openness", fmtPct(overview.trade_openness_pct_gdp), infoLine(metricDelta(overview.trade_openness_pct_gdp, previous?.trade_openness_pct_gdp, "pp", 1), "exports + imports / GDP"));
+  kpi("kpi-hhi", "Trade concentration", fmtPlain(overview.hhi, 3), infoLine(metricDelta(overview.hhi, previous?.hhi, "abs", 3, "", "higher-bad"), hhiBand(overview.hhi)));
+  kpi("kpi-frag", "Fragility", fmtPlain(overview.avg_fsi_score, 1), fragBandPill(overview.fragility_band) + infoLine(fsiDelta, fsiNote));
+  kpi("kpi-conflict", "Conflict intensity", fmtPlain(conflict, 1), infoLine(metricDelta(conflict, prevConflict, "abs", 1, " /m", "higher-bad"), overview.fatalities_per_million == null ? "violent events / million" : "fatalities / million"));
+  kpi("kpi-open", "Trade openness", fmtPct(overview.trade_openness_pct_gdp), infoLine(metricDelta(overview.trade_openness_pct_gdp, previous?.trade_openness_pct_gdp, "pp", 1, "", "neutral"), "exports + imports / GDP"));
 
   econ("econ-gdp", "GDP", shortMoneyB(overview.gdp_current_usd_billions), infoLine(metricDelta(overview.gdp_current_usd_billions, previous?.gdp_current_usd_billions, "pct", 1), "current USD"));
   econ("econ-pop", "Population", fmtPop(overview.population_millions), infoLine(metricDelta(overview.population_millions, previous?.population_millions, "pct", 1), "millions"));
   econ("econ-gdp-pc", "GDP per capita", fmtCurrency(overview.gdp_per_capita_usd), infoLine(metricDelta(overview.gdp_per_capita_usd, previous?.gdp_per_capita_usd, "pct", 1), "USD, current"));
   econ("econ-growth", "Real GDP growth", fmtPct(overview.real_gdp_growth_pct), infoLine(metricDelta(overview.real_gdp_growth_pct, previous?.real_gdp_growth_pct, "pp", 1), "year-on-year"));
-  econ("econ-inflation", "Inflation", fmtPct(overview.inflation_pct), infoLine(metricDelta(overview.inflation_pct, previous?.inflation_pct, "pp", 1), "avg consumer prices"));
-  econ("econ-debt", "Govt debt / GDP", fmtPct(overview.govt_debt_pct_gdp), infoLine(metricDelta(overview.govt_debt_pct_gdp, previous?.govt_debt_pct_gdp, "pp", 1), "GDP-weighted for bloc views"));
+  econ("econ-inflation", "Inflation", fmtPct(overview.inflation_pct), infoLine(metricDelta(overview.inflation_pct, previous?.inflation_pct, "pp", 1, "", "higher-bad"), "avg consumer prices"));
+  econ("econ-debt", "Govt debt / GDP", fmtPct(overview.govt_debt_pct_gdp), infoLine(metricDelta(overview.govt_debt_pct_gdp, previous?.govt_debt_pct_gdp, "pp", 1, "", "higher-bad"), "GDP-weighted for bloc views"));
   econ("econ-trade-gdp", "Fiscal balance", fmtPct(overview.fiscal_balance_pct_gdp), infoLine(metricDelta(overview.fiscal_balance_pct_gdp, previous?.fiscal_balance_pct_gdp, "pp", 1), "net lending / borrowing % GDP"));
   econ("econ-exports-gdp", "Exports / GDP", fmtPct(overview.exports_pct_gdp), infoLine(metricDelta(overview.exports_pct_gdp, previous?.exports_pct_gdp, "pp", 1), "export exposure"));
-  econ("econ-imports-gdp", "Imports / GDP", fmtPct(overview.imports_pct_gdp), infoLine(metricDelta(overview.imports_pct_gdp, previous?.imports_pct_gdp, "pp", 1), "import reliance"));
+  econ("econ-imports-gdp", "Imports / GDP", fmtPct(overview.imports_pct_gdp), infoLine(metricDelta(overview.imports_pct_gdp, previous?.imports_pct_gdp, "pp", 1, "", "higher-bad"), "import reliance"));
 
   const note = document.getElementById("econ-note");
   if (note) {
@@ -888,9 +1067,7 @@ function setMapTitle() {
 
 async function loadOverview(version) {
   const overview = localOverview(State.bloc, State.year, State.country);
-  const previous = State.year > 1990
-    ? localOverview(State.bloc, State.year - 1, State.country)
-    : null;
+  const previous = comparablePreviousOverview(State.bloc, State.year, State.country);
   if (!isFresh(version)) return;
   renderOverview(overview, previous);
 }
@@ -915,26 +1092,9 @@ async function loadPartners(version) {
   if (!isFresh(version)) return;
 
   renderPartnerBars(rows);
-
-  const p1El = document.getElementById("p1-select");
-  const p2El = document.getElementById("p2-select");
-  const options = rows.map(row => `<option value="${escapeHTML(row.counterpart_iso3)}">${escapeHTML(row.counterpart_iso3)}</option>`).join("");
-  p1El.innerHTML = options;
-  p2El.innerHTML = options;
-
-  if (!State.p1 || !rows.some(row => row.counterpart_iso3 === State.p1)) State.p1 = rows[0]?.counterpart_iso3 || null;
-  if (!State.p2 || !rows.some(row => row.counterpart_iso3 === State.p2)) State.p2 = rows[1]?.counterpart_iso3 || State.p1;
-  if (State.p1) p1El.value = State.p1;
-  if (State.p2) p2El.value = State.p2;
-
-  await loadPartnerTrend(version);
-}
-
-async function loadPartnerTrend(version = State.loadVersion) {
-  if (!State.p1 || !State.p2) return;
-  const rows = localPartnerHistory(State.bloc, State.p1, State.p2, State.country);
+  const dependence = localPartnerDependence(State.bloc, State.year, State.country);
   if (!isFresh(version)) return;
-  renderPartnerTrend(rows, State.p1, State.p2);
+  renderPartnerDependence(dependence, State);
 }
 
 async function loadConcentration(version) {
@@ -953,14 +1113,17 @@ async function loadConcentration(version) {
 }
 
 async function loadGrowth(version) {
-  const rows = localGrowth(State.bloc, State.country);
+  const rows = localGrowth(State.bloc, State.country, State.year);
   if (!isFresh(version)) return;
   document.getElementById("growth-title").textContent = `${scopeName()} · Trade growth indexed to 1990`;
+  const memberCount = State.country ? 1 : analyticalScopeMembers(State.bloc, State.year).size;
   document.getElementById("growth-sub").textContent = State.country
     ? "Selected country - 1990 = 100 - nominal current USD"
-    : `${State.bloc} members - each country rebased to 1990 = 100`;
+    : memberCount
+      ? `${State.bloc} ${State.year} analytical members - historical trajectories rebased to 1990 = 100`
+      : `No ${State.bloc} analytical membership coverage in ${State.year}`;
   document.getElementById("growth-note").textContent =
-    "Source: IMF IMTS/DOTS · 1990 = 100 index · nominal current USD · missing years shown as gaps · log scale when range exceeds 15×";
+    "Source: IMF IMTS/DOTS · selected-year members only · nominal current USD · missing years shown as gaps · log scale when range exceeds 15×";
   renderGrowth(rows, State);
 }
 
@@ -988,7 +1151,7 @@ async function loadProducts(version) {
   const subEl = document.getElementById("products-sub");
   const noteEl = document.getElementById("products-note");
   const emptyEl = document.getElementById("products-empty");
-  const chartEl = document.getElementById("products-chart");
+  const chartEl = document.getElementById("products-treemap");
   if (titleEl) titleEl.textContent = `${scopeName()} · Top ${State.productsFlow} sectors`;
   if (subEl) subEl.textContent = `Loading ${State.productsFlow} product sectors...`;
   if (noteEl) noteEl.textContent = "";
@@ -996,22 +1159,29 @@ async function loadProducts(version) {
     emptyEl.hidden = true;
     emptyEl.textContent = "";
   }
-  if (chartEl) chartEl.style.display = "";
+  if (chartEl) {
+    chartEl.style.display = "";
+    chartEl.innerHTML = "";
+  }
 
   const data = localProducts(State.bloc, State.year, State.country, State.productsFlow);
   if (!isFresh(version)) return;
 
   if (!data.available) {
-    destroyChart("products-chart");
-    if (chartEl) chartEl.style.display = "none";
+    if (chartEl) {
+      chartEl.style.display = "none";
+      chartEl.innerHTML = "";
+    }
     if (subEl) subEl.textContent = data.coverage_note || "Product data not available for this selection.";
     if (emptyEl) {
       emptyEl.hidden = false;
-      emptyEl.textContent = data.latest_year
+      emptyEl.textContent = data.message || (data.latest_year
         ? `No selected-year HS2 product coverage. Latest available product year is ${data.latest_year}.`
-        : "No HS2 product coverage is available for this selection.";
+        : "No HS2 product coverage is available for this selection.");
     }
-    if (noteEl) noteEl.textContent = "";
+    if (noteEl) noteEl.textContent = data.scope_type === "country"
+      ? "Country product panels use reporter-submitted selected-year HS2 rows only."
+      : "Bloc product composition requires at least 50% reporter coverage and 50% value coverage. Country drilldown shows reporter-submitted selected-year rows where available.";
     return;
   }
 
@@ -1019,7 +1189,8 @@ async function loadProducts(version) {
   if (emptyEl) emptyEl.hidden = true;
   if (subEl) subEl.textContent = data.coverage_note || `UN Comtrade · ${State.year}`;
   if (noteEl) {
-    noteEl.textContent = "Reporter-submitted UN Comtrade HS2 values. Shares are within the displayed flow and scope.";
+    noteEl.textContent = data.coverage_detail ||
+      "Reporter-submitted UN Comtrade HS2 values. Shares are within the reported flow and scope.";
   }
   renderProducts(data.rows, State.productsFlow);
 }
@@ -1079,16 +1250,6 @@ function attachListeners() {
   document.getElementById("metric-select").addEventListener("change", event => {
     State.mapMetric = event.target.value;
     loadMap(++State.loadVersion);
-  });
-
-  document.getElementById("p1-select").addEventListener("change", event => {
-    State.p1 = event.target.value;
-    loadPartnerTrend();
-  });
-
-  document.getElementById("p2-select").addEventListener("change", event => {
-    State.p2 = event.target.value;
-    loadPartnerTrend();
   });
 
   document.getElementById("flow-toggle")?.addEventListener("click", event => {

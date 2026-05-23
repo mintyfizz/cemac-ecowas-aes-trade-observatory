@@ -66,6 +66,14 @@ jobs:
           DATABRICKS_CATALOG:   ${{ secrets.DATABRICKS_CATALOG }}
         run: python scripts/audit_dashboard_data.py --check-only
 
+      - name: Validate live Databricks dashboard contract
+        env:
+          DATABRICKS_HOST:      ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+          DATABRICKS_TOKEN:     ${{ secrets.DATABRICKS_TOKEN }}
+          DATABRICKS_CATALOG:   ${{ secrets.DATABRICKS_CATALOG }}
+        run: python scripts/validate_dashboard_contract.py
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 

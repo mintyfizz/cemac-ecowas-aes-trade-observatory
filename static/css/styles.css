@@ -511,12 +511,49 @@ button, select {
   height: 276px !important;
 }
 
-.partner-selectors {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 6px;
-  align-items: center;
-  flex-wrap: wrap;
+#partner-dependence-chart {
+  height: 210px !important;
+}
+
+.partner-diagnostics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 10px 0 8px;
+}
+
+.diag-chip {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 9px 10px;
+  min-width: 0;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.diag-chip .lbl {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.diag-chip .val {
+  display: block;
+  color: var(--text-1);
+  font-size: 18px;
+  font-weight: 700;
+  margin-top: 3px;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.diag-chip .desc {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 3px;
+  line-height: 1.25;
 }
 
 .partner-bars {
@@ -839,7 +876,7 @@ button, select {
 .flow-btn {
   background: transparent;
   border: none;
-  color: var(--text-muted);
+  color: var(--muted);
   cursor: pointer;
   font-size: 12px;
   font-weight: 500;
@@ -907,9 +944,11 @@ button, select {
 }
 
 .product-empty {
+  display: flex;
   min-height: 260px;
   align-items: center;
   justify-content: center;
+  text-align: center;
 }
 
 .product-empty[hidden] {
@@ -1053,6 +1092,10 @@ button, select {
 
   .dbar-center { padding: 2px 3px; }
   .dbar-name { font-size: 10px; }
+
+  .partner-diagnostics {
+    grid-template-columns: 1fr;
+  }
 
   .tree {
     grid-template-columns: repeat(2, 1fr);

@@ -49,7 +49,11 @@ TABLES: dict[str, ExportSpec] = {
     ),
     "top_trade_partners": ExportSpec(
         source_table="gold.dashboard_top_trade_partners",
-        sql=f"SELECT * FROM {CATALOG}.gold.dashboard_top_trade_partners",
+        sql=f"""
+            SELECT *
+            FROM {CATALOG}.gold.dashboard_top_trade_partners
+            WHERE counterpart_iso3 RLIKE '^[A-Z]{{3}}$'
+        """,
     ),
     "conflict_hotspots": ExportSpec(
         source_table="gold.dashboard_conflict_hotspots",

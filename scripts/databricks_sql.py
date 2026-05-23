@@ -5,12 +5,31 @@ from __future__ import annotations
 import os
 import re
 import time
+from pathlib import Path
 from typing import Any
 
 import requests
 
 
-CATALOG = os.getenv("DATABRICKS_CATALOG", "cemac_ecowas_aes_trade")
+def _load_dotenv(path: Path) -> None:
+    """Load repo-local .env values without overriding real environment vars."""
+    if not path.exists():
+        return
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip().removeprefix("export ").strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+ROOT = Path(__file__).resolve().parent.parent
+_load_dotenv(ROOT / ".env")
+
+CATALOG = os.getenv("DATABRICKS_CATALOG") or "cemac_ecowas_aes_trade"
 
 
 def _creds() -> tuple[str, str, str]:
@@ -41,7 +60,22 @@ def _request_json(method: str, host: str, token: str, path: str, **kwargs) -> di
         timeout=60,
         **kwargs,
     )
-    response.raise_for_status()
+    try:
+        response.raise_for_status()
+    except requests.HTTPError as exc:
+        if response.status_code == 401:
+            raise RuntimeError(
+                "Databricks rejected DATABRICKS_TOKEN with HTTP 401. "
+                "The .env file was loaded, but the token is invalid, expired, "
+                "from the wrong workspace, or is not a Databricks workspace PAT/OAuth token "
+                "accepted by the Databricks REST API."
+            ) from exc
+        if response.status_code == 403:
+            raise RuntimeError(
+                "Databricks accepted the credential but denied access with HTTP 403. "
+                "Check that the token's user can access the SQL warehouse and gold tables."
+            ) from exc
+        raise
     return response.json()
 
 

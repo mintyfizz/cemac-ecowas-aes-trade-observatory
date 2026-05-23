@@ -88,15 +88,10 @@
         </div>
 
         <div class="chart-box">
-          <h3>Two-partner comparison</h3>
-          <p class="sub">Share of total trade over time</p>
-          <div class="partner-selectors">
-            <label class="ctrl-label" for="p1-select">Compare</label>
-            <select class="ctrl-select" id="p1-select"></select>
-            <label class="ctrl-label" for="p2-select">vs</label>
-            <select class="ctrl-select" id="p2-select"></select>
-          </div>
-          <canvas id="partner-trend"></canvas>
+          <h3 id="partner-dependence-title">Partner dependence diagnostics</h3>
+          <p class="sub" id="partner-dependence-sub">Top partner and top-3 share of total trade</p>
+          <div id="partner-dependence-summary" class="partner-diagnostics"></div>
+          <canvas id="partner-dependence-chart"></canvas>
         </div>
       </div>
     </section>
@@ -148,7 +143,7 @@
             <button class="flow-btn" data-flow="import" type="button">Imports</button>
           </div>
         </div>
-        <canvas id="products-chart"></canvas>
+        <div id="products-treemap" class="products-treemap"></div>
         <div id="products-empty" class="empty-state product-empty" hidden></div>
         <p class="note" id="products-note"></p>
       </div>
@@ -170,8 +165,8 @@
         </div>
 
         <div class="chart-box">
-          <h3 id="risk-title">Macro-fiscal pressure scorecard</h3>
-          <p class="sub" id="risk-sub">Six indicators normalised 0–100 · higher score = more pressure on that dimension</p>
+          <h3 id="risk-title">Macro-fiscal diagnostics</h3>
+          <p class="sub" id="risk-sub">Six observed indicators normalised 0–100 · not a credit rating or debt sustainability assessment</p>
           <canvas id="risk-chart"></canvas>
         </div>
       </div>
@@ -191,7 +186,7 @@
 
   <div class="toast" id="toast" role="alert" aria-live="assertive"></div>
 
-  <script src="js/charts.js?v=20260522-static-data-integrity-v1"></script>
-  <script src="js/app_static.js?v=20260522-static-data-integrity-v1"></script>
+  <script src="js/charts.js?v=20260523-prepublish-v3"></script>
+  <script src="js/app_static.js?v=20260523-prepublish-v3"></script>
 </body>
 </html>

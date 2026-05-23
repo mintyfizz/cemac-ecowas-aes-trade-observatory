@@ -26,7 +26,7 @@ if str(ROOT) not in sys.path:
 try:
     from scripts.databricks_sql import CATALOG, query as dbq
 except Exception:  # pragma: no cover - import failure is reported at runtime
-    CATALOG = os.getenv("DATABRICKS_CATALOG", "cemac_ecowas_aes_trade")
+    CATALOG = os.getenv("DATABRICKS_CATALOG") or "cemac_ecowas_aes_trade"
     dbq = None
 
 
@@ -52,7 +52,7 @@ PANEL_MAPPING = [
     ("Overview cards", "country_timeseries, top_trade_partners, fragility_components", "Selected bloc/country and selected year."),
     ("Map", "country_timeseries", "Selected year only; metric selector changes the rendered value."),
     ("Top trading partners", "top_trade_partners", "ISO3 partners only; aggregate rows are filtered out of displayed outputs."),
-    ("Two-partner comparison", "top_trade_partners", "Partner share uses full total trade denominator from country_timeseries."),
+    ("Partner dependence diagnostics", "top_trade_partners, country_timeseries", "Top partner and top-3 shares use the full total trade denominator."),
     ("Partner concentration", "country_timeseries, bloc_comparison", "HHI trend; selected country gets its own history."),
     ("Trade openness trend", "bloc_comparison", "Exports plus imports as percent of GDP."),
     ("Trade growth indexed to 1990", "country_timeseries", "Total trade rebased to 1990 = 100; nulls remain gaps."),
@@ -60,8 +60,19 @@ PANEL_MAPPING = [
     ("Product trade structure", "product_trade_hs2", "Selected year only; empty state when selected-year HS2 coverage is absent."),
     ("Conflict", "conflict_hotspots", "Bloc view shows countries; country drilldown shows admin1 hotspots."),
     ("Fragility", "fragility_components", "Latest available FSI components, not true 2024 coverage when 2024 source is absent."),
+    ("Macro-fiscal diagnostics", "country_timeseries", "Normalized dashboard diagnostic; not a credit rating or debt sustainability assessment."),
     ("Pipeline health", "all exported static JSON", "Row counts and coverage metadata from exported datasets."),
 ]
+
+PRODUCT_REPORTER_COVERAGE_THRESHOLD = 0.5
+PRODUCT_VALUE_COVERAGE_THRESHOLD = 0.5
+
+
+def display_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
 
 
 class Audit:
@@ -103,17 +114,17 @@ def read_static(static_dir: Path, audit: Audit) -> dict[str, list[dict[str, Any]
     for name, filename in REQUIRED_FILES.items():
         path = static_dir / filename
         if not path.exists():
-            audit.fail(f"Missing required static dataset: {path.relative_to(ROOT)}")
+            audit.fail(f"Missing required static dataset: {display_path(path)}")
             datasets[name] = []
             continue
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
-            audit.fail(f"Invalid JSON in {path.relative_to(ROOT)}: {exc}")
+            audit.fail(f"Invalid JSON in {display_path(path)}: {exc}")
             datasets[name] = []
             continue
         if not isinstance(data, list):
-            audit.fail(f"{path.relative_to(ROOT)} must contain a JSON array.")
+            audit.fail(f"{display_path(path)} must contain a JSON array.")
             datasets[name] = []
             continue
         datasets[name] = data
@@ -223,9 +234,9 @@ def validate_partners(rows: list[dict[str, Any]], audit: Audit) -> None:
         if not re.fullmatch(r"[A-Z]{3}", str(row.get("counterpart_iso3", "")))
     ]
     if aggregate_rows:
-        audit.warn(
+        audit.fail(
             f"top_trade_partners contains {len(aggregate_rows):,} raw aggregate/non-ISO partner rows; "
-            "static rendering filters them from displayed partner panels."
+            "static exports must filter these before publishing."
         )
 
     bad_shares = [
@@ -283,12 +294,144 @@ def validate_products(rows: list[dict[str, Any]], audit: Audit) -> None:
     )
 
 
+def validate_bloc_scope(
+    country_rows: list[dict[str, Any]],
+    bloc_rows: list[dict[str, Any]],
+    audit: Audit,
+) -> None:
+    if not country_rows or not bloc_rows:
+        return
+
+    members_by_bloc_year: dict[tuple[str, int], set[str]] = {}
+    for row in country_rows:
+        bloc = row.get("analytical_bloc_code")
+        year = row.get("year")
+        country = row.get("country_iso3")
+        if bloc and isinstance(year, int | float) and country:
+            members_by_bloc_year.setdefault((str(bloc), int(year)), set()).add(str(country))
+
+    mismatches: list[str] = []
+    for row in bloc_rows:
+        bloc = row.get("analytical_bloc_code")
+        year = row.get("year")
+        expected = num(row.get("country_count"))
+        if not bloc or not isinstance(year, int | float) or expected is None:
+            continue
+        actual = len(members_by_bloc_year.get((str(bloc), int(year)), set()))
+        if actual != int(expected):
+            mismatches.append(f"{bloc} {int(year)} expected {int(expected)} countries, country mart has {actual}")
+
+    if mismatches:
+        audit.fail(f"bloc_comparison country_count does not match country_timeseries: {mismatches[:5]}")
+
+    aes_years = sorted(year for bloc, year in members_by_bloc_year if bloc == "AES")
+    if aes_years:
+        audit.note(f"AES analytical split coverage in country_timeseries: {min(aes_years)}-{max(aes_years)}.")
+
+
+def product_coverage(
+    country_rows: list[dict[str, Any]],
+    product_rows: list[dict[str, Any]],
+    bloc: str,
+    year: int,
+    flow: str,
+) -> dict[str, Any]:
+    members = {
+        str(row["country_iso3"])
+        for row in country_rows
+        if row.get("analytical_bloc_code") == bloc and row.get("year") == year and row.get("country_iso3")
+    }
+    rows = [
+        row for row in product_rows
+        if row.get("reporter_iso3") in members and row.get("year") == year and row.get("flow_type") == flow
+    ]
+    reporters = {str(row.get("reporter_iso3")) for row in rows if row.get("reporter_iso3")}
+    scope_total = 0.0
+    flow_col = "imports_billions_usd" if flow == "import" else "exports_billions_usd"
+    for row in country_rows:
+        if row.get("country_iso3") in members and row.get("year") == year:
+            scope_total += num(row.get(flow_col)) or 0.0
+
+    reporter_totals: dict[str, float] = {}
+    for row in rows:
+        reporter = row.get("reporter_iso3")
+        if not reporter:
+            continue
+        source_total = num(row.get("reporter_year_flow_total_usd"))
+        current = reporter_totals.get(str(reporter), 0.0)
+        if source_total is not None:
+            reporter_totals[str(reporter)] = max(current, source_total / 1e9)
+        else:
+            reporter_totals[str(reporter)] = current + (num(row.get("trade_value_billions_usd")) or 0.0)
+
+    reported_total = sum(reporter_totals.values())
+    reporter_ratio = len(reporters) / len(members) if members else 0.0
+    value_ratio = reported_total / scope_total if scope_total else 0.0
+    return {
+        "members": len(members),
+        "reporters": len(reporters),
+        "reporter_ratio": reporter_ratio,
+        "value_ratio": value_ratio,
+        "passes": reporter_ratio >= PRODUCT_REPORTER_COVERAGE_THRESHOLD
+        and value_ratio >= PRODUCT_VALUE_COVERAGE_THRESHOLD,
+    }
+
+
+def validate_product_coverage(
+    country_rows: list[dict[str, Any]],
+    product_rows: list[dict[str, Any]],
+    audit: Audit,
+) -> None:
+    if not country_rows or not product_rows:
+        return
+
+    blocs = sorted({str(row.get("analytical_bloc_code")) for row in country_rows if row.get("analytical_bloc_code")})
+    years = sorted({
+        int(row["year"])
+        for row in country_rows
+        if isinstance(row.get("year"), int | float) and not isinstance(row.get("year"), bool)
+    })
+
+    for bloc in blocs:
+        for flow in ("export", "import"):
+            passing_years: list[int] = []
+            latest_detail: dict[str, Any] | None = None
+            for year in years:
+                detail = product_coverage(country_rows, product_rows, bloc, year, flow)
+                if detail["members"] == 0:
+                    continue
+                latest_detail = detail
+                if detail["passes"]:
+                    passing_years.append(year)
+            if passing_years:
+                audit.note(
+                    f"Representative HS2 {flow} coverage for {bloc}: "
+                    f"{min(passing_years)}-{max(passing_years)} ({len(passing_years)} years)."
+                )
+            elif latest_detail:
+                audit.warn(
+                    f"No representative HS2 {flow} year for {bloc} meets both 50% coverage thresholds; "
+                    f"latest checked coverage is {latest_detail['reporters']}/{latest_detail['members']} reporters "
+                    f"and {latest_detail['value_ratio'] * 100:.1f}% of flow value."
+                )
+
+
 def validate_static(datasets: dict[str, list[dict[str, Any]]], audit: Audit) -> None:
     validate_country_timeseries(datasets.get("country_timeseries", []), audit)
     validate_partners(datasets.get("top_trade_partners", []), audit)
     validate_fragility(datasets.get("fragility_components", []), audit)
     validate_bloc(datasets.get("bloc_comparison", []), audit)
     validate_products(datasets.get("product_trade_hs2", []), audit)
+    validate_bloc_scope(
+        datasets.get("country_timeseries", []),
+        datasets.get("bloc_comparison", []),
+        audit,
+    )
+    validate_product_coverage(
+        datasets.get("country_timeseries", []),
+        datasets.get("product_trade_hs2", []),
+        audit,
+    )
 
 
 def databricks_creds_present() -> bool:
@@ -357,7 +500,7 @@ Generated: {generated}
 Status: **{audit.status}**
 
 This audit covers the GitHub Pages static dashboard. The browser reads only
-local files under `{static_dir.relative_to(ROOT)}`; Databricks remains the
+local files under `{display_path(static_dir)}`; Databricks remains the
 source of truth for those exported files.
 
 ## Failures
@@ -405,10 +548,16 @@ Missing inputs remain null. They must not be rendered as zero.
 - ACLED hotspot panels use the latest loaded 3-year window, not necessarily a
   single selected calendar year.
 - Product sectors use `gold.product_trade_hs2` only where selected-year HS2
-  coverage exists. Missing product years are displayed as gaps.
-- Macro-fiscal pressure is a normalized dashboard diagnostic, not an official
+  coverage exists. Bloc-level product composition requires at least 50%
+  reporter coverage and 50% value coverage; otherwise the dashboard shows an
+  insufficient-coverage state.
+- Macro-fiscal diagnostics are normalized dashboard indicators, not an official
   credit rating, sovereign rating, or debt sustainability assessment.
 - Partner panels filter non-ISO aggregate partner rows from displayed outputs.
+  Static exports should contain ISO3 partner rows only.
+- Bloc-level year-over-year card deltas are only meaningful when the selected
+  bloc membership set is unchanged from the prior year. The dashboard suppresses
+  bloc deltas across analytical scope breaks such as the recent AES split.
 
 ## Fix Priorities
 
@@ -447,7 +596,7 @@ def main() -> int:
     if not args.check_only:
         report_path.parent.mkdir(parents=True, exist_ok=True)
         report_path.write_text(report, encoding="utf-8")
-        print(f"Wrote {report_path.relative_to(ROOT)}")
+        print(f"Wrote {display_path(report_path)}")
 
     print(f"Dashboard data audit status: {audit.status}")
     for failure in audit.failures:

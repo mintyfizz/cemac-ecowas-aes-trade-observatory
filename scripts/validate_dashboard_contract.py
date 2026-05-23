@@ -77,7 +77,7 @@ def main() -> int:
         """
     )[0]["rows"]
     print(f"aggregate partner rows present in raw top-partner mart: {aggregate_partners}")
-    print("API filters aggregate partner rows out of public top-partner panels.")
+    print("Static export filters aggregate partner rows out of public top-partner panels.")
 
     if failures:
         print("\nFailures:")

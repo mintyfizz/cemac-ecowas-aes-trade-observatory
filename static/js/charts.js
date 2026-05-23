@@ -442,24 +442,55 @@ function renderPartnerBars(rows) {
   }).join("");
 }
 
-function renderPartnerTrend(rows, p1, p2, selectedYear) {
-  const ctx = canvas("partner-trend");
+function renderPartnerDependence(data, state) {
+  const summary = document.getElementById("partner-dependence-summary");
+  const title = document.getElementById("partner-dependence-title");
+  const sub = document.getElementById("partner-dependence-sub");
+  const ctx = canvas("partner-dependence-chart");
   if (!ctx) return;
-  if (!rows || !rows.length) return chartEmpty("partner-trend", "Select two partners with time-series coverage.");
 
-  const years = [...new Set(rows.map(row => row.year))].sort((a, b) => a - b);
-  const dataFor = iso => years.map(year => {
-    const found = rows.find(row => row.year === year && row.counterpart_iso3 === iso);
-    return found ? found.share_pct : null;
-  });
+  const current = data?.current || null;
+  const series = (data?.series || []).filter(row =>
+    Number.isFinite(row.year) &&
+    (row.top_partner_share_pct != null || row.top3_share_pct != null)
+  );
 
-  const p1Label = (typeof ISO3_NAMES !== "undefined" && ISO3_NAMES[p1]) || p1;
-  const p2Label = (typeof ISO3_NAMES !== "undefined" && ISO3_NAMES[p2]) || p2;
+  if (title) title.textContent = `${state.country ? ISO3_NAMES[state.country] || state.country : state.bloc} · Partner dependence`;
+  if (sub) sub.textContent = "Top partner and top-3 share of total trade";
 
+  if (!current || !series.length) {
+    if (summary) summary.innerHTML = `<div class="empty-state">No partner dependence data for this selection.</div>`;
+    chartEmpty("partner-dependence-chart", "No partner dependence trend.");
+    return;
+  }
+
+  const topName = ISO3_NAMES[current.top_partner_iso3] || current.top_partner_name || current.top_partner_iso3 || "--";
+  const hhiText = hhiDescription(current.hhi);
+  if (summary) {
+    summary.innerHTML = `
+      <div class="diag-chip">
+        <span class="lbl">Top partner</span>
+        <span class="val">${escapeHTML(topName)}</span>
+        <span class="desc">${fmtPct(current.top_partner_share_pct)} of total trade</span>
+      </div>
+      <div class="diag-chip">
+        <span class="lbl">Top 3 partners</span>
+        <span class="val">${fmtPct(current.top3_share_pct)}</span>
+        <span class="desc">combined share of trade</span>
+      </div>
+      <div class="diag-chip">
+        <span class="lbl">HHI</span>
+        <span class="val">${fmtPlain(current.hhi, 3)}</span>
+        <span class="desc">${escapeHTML(hhiText)}</span>
+      </div>
+    `;
+  }
+
+  const years = series.map(row => row.year);
   const yearMarkerPlugin = {
-    id: "yearMarker",
+    id: "partnerDependenceYearMarker",
     afterDraw(chart) {
-      const idx = years.indexOf(Number(selectedYear));
+      const idx = years.indexOf(Number(state.year));
       if (idx < 0) return;
       const x = chart.scales.x.getPixelForValue(idx);
       const { top, bottom } = chart.chartArea;
@@ -467,7 +498,7 @@ function renderPartnerTrend(rows, p1, p2, selectedYear) {
       c.save();
       c.setLineDash([4, 3]);
       c.strokeStyle = "rgba(255,255,255,0.35)";
-      c.lineWidth = 1.5;
+      c.lineWidth = 1.3;
       c.beginPath();
       c.moveTo(x, top);
       c.lineTo(x, bottom);
@@ -476,16 +507,49 @@ function renderPartnerTrend(rows, p1, p2, selectedYear) {
     },
   };
 
-  chartStore["partner-trend"] = new Chart(ctx, {
+  chartStore["partner-dependence-chart"] = new Chart(ctx, {
     type: "line",
     data: {
       labels: years,
       datasets: [
-        { label: p1Label, data: dataFor(p1), borderColor: COLORS.exports, backgroundColor: COLORS.exports, tension: 0.25, spanGaps: true, pointRadius: 2 },
-        { label: p2Label, data: dataFor(p2), borderColor: COLORS.imports, backgroundColor: COLORS.imports, tension: 0.25, spanGaps: true, pointRadius: 2 },
+        {
+          label: "Top partner share",
+          data: series.map(row => row.top_partner_share_pct ?? null),
+          borderColor: COLORS.warning,
+          backgroundColor: COLORS.warning,
+          tension: 0.24,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          spanGaps: true,
+        },
+        {
+          label: "Top 3 share",
+          data: series.map(row => row.top3_share_pct ?? null),
+          borderColor: COLORS.imports,
+          backgroundColor: COLORS.imports,
+          tension: 0.24,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          spanGaps: true,
+        },
       ],
     },
-    options: lineOptions("Partner share of total trade (%)", "Share (%)"),
+    options: lineOptions("Partner dependence over time", "Share of total trade (%)", {
+      plugins: {
+        legend: { position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 3, usePointStyle: true, pointStyle: "line" } },
+        title: { display: true, text: "Partner dependence over time", color: COLORS.text, font: { size: 12, weight: "500" } },
+        tooltip: {
+          backgroundColor: "#11120f",
+          borderColor: "#55564f",
+          borderWidth: 1,
+          callbacks: {
+            label(context) {
+              return `${context.dataset.label}: ${fmtPct(context.parsed.y)}`;
+            },
+          },
+        },
+      },
+    }),
     plugins: [yearMarkerPlugin],
   });
 }
@@ -620,6 +684,7 @@ function renderIntegration(rows, state) {
 function renderGrowth(rows, state) {
   const ctx = canvas("growth-chart");
   if (!ctx) return;
+  ctx.parentElement?.querySelectorAll(".empty-state").forEach(node => node.remove());
   if (!rows || !rows.length) return chartEmpty("growth-chart", "No growth data.");
 
   const years = [...new Set(rows.map(row => row.year))].sort((a, b) => a - b);
@@ -932,26 +997,26 @@ function renderRiskRadar(scores, label) {
         borderWidth: 0,
       }],
     },
-    options: barOptions("Pressure score (0-100)", "Normalized pressure", {
+    options: barOptions("Diagnostic score (0-100)", "Normalized diagnostic score", {
       scales: {
         x: {
           min: 0,
           max: 100,
           grid: { color: COLORS.grid },
           ticks: { color: COLORS.text },
-          title: { display: true, text: "Higher = more pressure", color: COLORS.text },
+          title: { display: true, text: "Higher = more observed pressure", color: COLORS.text },
         },
         y: { grid: { color: "rgba(0,0,0,0)" }, ticks: { color: COLORS.text } },
       },
       plugins: {
         legend: { display: false },
-        title: { display: true, text: "Pressure score (0-100)", color: COLORS.text, font: { size: 12, weight: "500" } },
+        title: { display: true, text: "Macro-fiscal diagnostics (0-100)", color: COLORS.text, font: { size: 12, weight: "500" } },
         tooltip: {
           backgroundColor: "#11120f",
           borderColor: "#55564f",
           borderWidth: 1,
           callbacks: {
-            label: item => `Score: ${fmtPlain(item.parsed.x, 0)} / 100`,
+            label: item => `Diagnostic: ${fmtPlain(item.parsed.x, 0)} / 100`,
             afterLabel: item => {
               const row = rows[item.dataIndex];
               return [`Actual: ${row.actual}`, row.detail].filter(Boolean);
