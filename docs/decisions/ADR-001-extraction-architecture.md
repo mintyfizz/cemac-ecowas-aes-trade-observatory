@@ -74,17 +74,18 @@ Open Data API (`api.worldbank.org`) from a Databricks Free Edition
 serverless notebook and received an HTTP 200 response containing valid
 Cameroon GDP data: 2020 GDP of 40,773,241,177 USD.
 
-UN Comtrade is not part of the active Week 2 path. A Databricks serverless
-test on May 16, 2026 failed before authentication with DNS resolution
-errors for `comtradeapi.un.org`. A local Mac network check resolved the
-hostname and received an HTTP response from the endpoint, confirming that
-the API hostname exists and the failure is specific to Databricks
-serverless network access. The attempted local fallback then hit key and
-quota friction.
+UN Comtrade is not part of the active Week 2 partner-dependency path. A
+Databricks serverless test on May 16, 2026 failed before authentication
+with DNS resolution errors for `comtradeapi.un.org`. A local Mac network
+check resolved the hostname and received an HTTP response from the
+endpoint, confirming that the API hostname exists and the failure is
+specific to Databricks serverless network access. ADR-003 later
+reintroduced Comtrade through a local W00 national-total path for product
+structure only.
 
 For annual bilateral total trade, IMF IMTS replaces UN Comtrade. IMF IMTS
 is extracted directly in `04_bronze_imts_extract.ipynb` and writes
-`bronze.bilateral_trade_raw`. The source-specific trade decision is
+`bronze.imts_raw`. The source-specific trade decision is
 recorded in ADR-002.
 
 ## Consequences

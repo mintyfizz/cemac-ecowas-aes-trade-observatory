@@ -1,6 +1,5 @@
 # Local raw extracts and secrets
 data/raw/
-static/data/
 .env
 .venv/
 __pycache__/

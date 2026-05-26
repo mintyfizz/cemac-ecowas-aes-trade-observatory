@@ -1,7 +1,13 @@
 #!/usr/bin/env python3
 """
-Populate silver.comtrade_hs2_annual and silver.comtrade_country_year_coverage
-from the local JSONL file, then run the gold.product_trade_hs2 CTAS.
+Populate product-only Comtrade W00 silver tables from the local JSONL file,
+then run the gold.product_trade_hs2 CTAS.
+
+This script owns:
+  - silver.comtrade_hs2_annual_w00
+  - silver.comtrade_product_coverage
+
+Notebook 10b owns the bilateral partner tables used by notebook 10.
 
 Usage:
     python scripts/load_comtrade_silver.py
@@ -10,22 +16,24 @@ Usage:
 from __future__ import annotations
 
 import collections
-import configparser
 import json
-import os
-import sys
 import time
 from datetime import datetime, timezone
 
 import requests
 
+from _dbx_config import dbx_config, require_dbx_config
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-HOST = "dbc-7b56a3a7-18e9.cloud.databricks.com"
-WH_ID = "9cd578d885df8799"
-CAT = "cemac_ecowas_aes_trade"
+DBX = dbx_config()
+HOST = DBX["host"]
+WH_ID = DBX["warehouse"]
+CAT = DBX["catalog"]
 JSONL_PATH = "data/raw/comtrade/cemac_ecowas_comtrade_annual_hs6_1990_2024.jsonl"
+PRODUCT_HS2_TABLE = "silver.comtrade_hs2_annual_w00"
+PRODUCT_COVERAGE_TABLE = "silver.comtrade_product_coverage"
 
 # Notebook constants (must match 10b_silver_comtrade_normalize.ipynb)
 SPARSE_THRESHOLD = 500
@@ -140,10 +148,7 @@ HS2_NAMES: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 def _get_pat() -> str:
-    cfg_path = os.path.expanduser("~/.databrickscfg")
-    cfg = configparser.ConfigParser()
-    cfg.read(cfg_path)
-    return cfg["cemac-project"]["token"]
+    return DBX["token"]
 
 
 def _headers(pat: str) -> dict[str, str]:
@@ -198,8 +203,8 @@ def load_and_aggregate(jsonl_path: str):
     """
     Returns (hs2_records, coverage_records).
 
-    hs2_records: list of dicts with keys matching silver.comtrade_hs2_annual
-    coverage_records: list of dicts matching silver.comtrade_country_year_coverage
+    hs2_records: list of dicts with keys matching silver.comtrade_hs2_annual_w00
+    coverage_records: list of dicts matching silver.comtrade_product_coverage
     """
     print(f"Reading {jsonl_path} ...")
 
@@ -306,7 +311,7 @@ def load_and_aggregate(jsonl_path: str):
                 "country_iso3": reporter,
                 "year": year,
                 "comtrade_row_count": n,
-                "distinct_partners": 0,      # not computed (only in hs6_normalized)
+                "distinct_partners": 1 if has_data else 0,
                 "distinct_hs6_products": 0,  # not computed
                 "has_comtrade_data": has_data,
                 "comtrade_status": comtrade_status,
@@ -364,16 +369,47 @@ def insert_batches(pat: str, full_table: str, columns: list[str], records: list[
 # Step 3: Gold CTAS
 # ---------------------------------------------------------------------------
 
-GOLD_CTAS = """
+PRODUCT_HS2_DDL = f"""
+CREATE OR REPLACE TABLE {PRODUCT_HS2_TABLE} (
+    reporter_iso3           STRING,
+    year                    INT,
+    flow_type               STRING,
+    hs2_code                STRING,
+    hs2_description         STRING,
+    trade_value_usd         DOUBLE,
+    distinct_hs6_products   BIGINT,
+    distinct_partners       BIGINT,
+    created_at              STRING
+)
+USING DELTA
+"""
+
+PRODUCT_COVERAGE_DDL = f"""
+CREATE OR REPLACE TABLE {PRODUCT_COVERAGE_TABLE} (
+    country_iso3            STRING,
+    year                    INT,
+    comtrade_row_count      BIGINT,
+    distinct_partners       BIGINT,
+    distinct_hs6_products   BIGINT,
+    has_comtrade_data       BOOLEAN,
+    comtrade_status         STRING,
+    quality_flag            STRING,
+    recommended_action      STRING,
+    created_at              STRING
+)
+USING DELTA
+"""
+
+GOLD_CTAS = f"""
 CREATE OR REPLACE TABLE gold.product_trade_hs2
 PARTITIONED BY (reporter_iso3, year)
 AS
 WITH hs2 AS (
-  SELECT * FROM silver.comtrade_hs2_annual
+  SELECT * FROM {PRODUCT_HS2_TABLE}
 ),
 cov AS (
   SELECT country_iso3, year, quality_flag, recommended_action, comtrade_status
-  FROM silver.comtrade_country_year_coverage
+  FROM {PRODUCT_COVERAGE_TABLE}
 ),
 joined AS (
   SELECT
@@ -426,38 +462,39 @@ SELECT * FROM final
 # ---------------------------------------------------------------------------
 
 def main():
+    require_dbx_config(DBX, "host", "warehouse", "token")
     pat = _get_pat()
     print(f"PAT loaded (ends ...{pat[-6:]})\n")
 
     # --- Step 1: Aggregate locally ---
     hs2_records, coverage_records = load_and_aggregate(JSONL_PATH)
 
-    # --- Step 2a: Rebuild silver.comtrade_hs2_annual ---
-    print("\n[Step 2a] Rebuilding silver.comtrade_hs2_annual ...")
-    run_sql(pat, "TRUNCATE TABLE silver.comtrade_hs2_annual")
+    # --- Step 2a: Rebuild product HS2 W00 table ---
+    print(f"\n[Step 2a] Rebuilding {PRODUCT_HS2_TABLE} ...")
+    run_sql(pat, PRODUCT_HS2_DDL)
     hs2_cols = [
         "reporter_iso3", "year", "flow_type", "hs2_code", "hs2_description",
         "trade_value_usd", "distinct_hs6_products", "distinct_partners", "created_at",
     ]
-    insert_batches(pat, "silver.comtrade_hs2_annual", hs2_cols, hs2_records)
+    insert_batches(pat, PRODUCT_HS2_TABLE, hs2_cols, hs2_records)
 
     # Verify
-    resp = run_sql(pat, "SELECT COUNT(*) FROM silver.comtrade_hs2_annual")
+    resp = run_sql(pat, f"SELECT COUNT(*) FROM {PRODUCT_HS2_TABLE}")
     count = rows_from(resp)[0][0]
-    print(f"  Verified: {count} rows in silver.comtrade_hs2_annual")
+    print(f"  Verified: {count} rows in {PRODUCT_HS2_TABLE}")
 
-    # --- Step 2b: Rebuild silver.comtrade_country_year_coverage ---
-    print("\n[Step 2b] Rebuilding silver.comtrade_country_year_coverage ...")
-    run_sql(pat, "TRUNCATE TABLE silver.comtrade_country_year_coverage")
+    # --- Step 2b: Rebuild product coverage table ---
+    print(f"\n[Step 2b] Rebuilding {PRODUCT_COVERAGE_TABLE} ...")
+    run_sql(pat, PRODUCT_COVERAGE_DDL)
     cov_cols = [
         "country_iso3", "year", "comtrade_row_count", "distinct_partners",
         "distinct_hs6_products", "has_comtrade_data", "comtrade_status",
         "quality_flag", "recommended_action", "created_at",
     ]
-    insert_batches(pat, "silver.comtrade_country_year_coverage", cov_cols, coverage_records, batch_size=300)
+    insert_batches(pat, PRODUCT_COVERAGE_TABLE, cov_cols, coverage_records, batch_size=300)
 
     # Verify
-    resp = run_sql(pat, "SELECT quality_flag, COUNT(*) AS n FROM silver.comtrade_country_year_coverage GROUP BY quality_flag ORDER BY n DESC")
+    resp = run_sql(pat, f"SELECT quality_flag, COUNT(*) AS n FROM {PRODUCT_COVERAGE_TABLE} GROUP BY quality_flag ORDER BY n DESC")
     print("  Coverage quality_flag distribution:")
     for row in rows_from(resp):
         print(f"    {row[0]}: {row[1]}")

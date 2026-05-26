@@ -2,7 +2,8 @@
 
 ## Status
 
-Accepted, May 16, 2026.
+Accepted, May 16, 2026. Superseded in part by ADR-003 for Comtrade's
+return to product-structure analysis only.
 
 ## Context
 
@@ -31,7 +32,7 @@ dependency layer.
 Use IMF IMTS for the active bronze bilateral trade extractor.
 
 The implementation lives in `04_bronze_imts_extract.ipynb` and writes
-`bronze.bilateral_trade_raw`.
+`bronze.imts_raw`.
 
 The notebook extracts:
 
@@ -41,7 +42,9 @@ The notebook extracts:
 - The 21 project reporters
 - Annual observations from 2010 through 2023
 
-UN Comtrade is removed from the active Week 2 path.
+UN Comtrade is removed from the active Week 2 partner-dependency path.
+ADR-003 reintroduces Comtrade for HS2 product-structure views using
+national-total W00 rows, not as the primary bilateral source.
 
 ## Follow-up note, May 22, 2026
 
@@ -71,5 +74,4 @@ partner-dependency layer.
 
 **Reversibility:**
 - If product-level HS analysis becomes necessary before the dashboard ships,
-  a separate bronze source can be added without changing
-  `bronze.bilateral_trade_raw`.
+  a separate bronze source can be added without changing `bronze.imts_raw`.

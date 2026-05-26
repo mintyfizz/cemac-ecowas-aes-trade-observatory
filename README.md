@@ -60,8 +60,9 @@ Raw sources → Bronze (Delta) → Silver (Delta) → Gold marts → Static JSON
 
 | Table | Source | Contents |
 |---|---|---|
-| `bronze.data360_raw` | World Bank Data360 | Macroeconomic indicators for CEMAC countries, 1990–2024 |
+| `bronze.data360_raw` | World Bank Data360 | Network-reachability and Delta time-travel demonstration; not read by downstream dashboard marts |
 | `bronze.imts_raw` | IMF IMTS / DOTS API | Annual bilateral goods exports and imports for all 21 countries and their partners, 1990–2024 |
+| `bronze.comtrade_hs6_raw` | UN Comtrade | HS6 product rows from local extract, including W00 national totals for product structure |
 | `bronze.acled_events_historical` | ACLED | Individual conflict events (coordinates, actor, event type, fatalities), 1990–2024 |
 | `bronze.acled_weekly_aggregated` | ACLED | Country-week rollup of event counts and fatalities |
 | `bronze.imf_weo_raw` | IMF World Economic Outlook | Debt-to-GDP, fiscal balance, inflation, current account, 1990–2024 |
@@ -76,6 +77,9 @@ Raw sources → Bronze (Delta) → Silver (Delta) → Gold marts → Static JSON
 | `silver.fact_macro_annual` | GDP, trade openness, debt ratios, and fiscal indicators per country per year |
 | `silver.fact_trade_partner_annual` | Bilateral export and import totals per reporter–partner–year |
 | `silver.trade_partner_concentration_annual` | Herfindahl-Hirschman Index (HHI) of partner concentration per country per year |
+| `silver.comtrade_partner_annual` | Bilateral Comtrade partner totals used only where coverage is good |
+| `silver.comtrade_hs2_annual_w00` | W00 national-total HS2 product trade for product-structure charts |
+| `silver.comtrade_product_coverage` | Product coverage flags for HS2 dashboard eligibility |
 | `silver.fact_acled_events` | Cleaned and typed individual conflict events |
 | `silver.fact_acled_weekly` | Country-week event and fatality aggregates |
 | `silver.fact_acled_country_year` | Country-year conflict summary (events, fatalities, fatalities per million) |
@@ -109,14 +113,16 @@ Raw sources → Bronze (Delta) → Silver (Delta) → Gold marts → Static JSON
 
 | Source | What it provides | Coverage | Access |
 |---|---|---|---|
-| World Bank Data360 | GDP and macro indicators | 1990–2024 | Public |
 | IMF IMTS / DOTS | Annual bilateral goods exports and imports by partner | 1990–2024 | Public API |
+| UN Comtrade | HS2 product structure from W00 national-total rows | 1993–2024 in current export | Local extract |
 | ACLED | Conflict events, fatalities, actor types | 1990–2024 | Research key |
 | IMF WEO | Debt-to-GDP, fiscal balance, inflation, current account | 1990–2024 | Public CSV |
 | Fund for Peace FSI | Composite and 12-component fragility scores | 2006–2023 latest available in current export | Public CSV |
 
 IMF aggregate partner groups (e.g. `G001`, `W00`) are excluded from all
 partner panels. Only named country counterparts appear in the dashboard.
+World Bank Data360 remains in the repo as a reachability and Delta
+time-travel demonstration, but it is not a dashboard source.
 
 ---
 
@@ -137,6 +143,7 @@ partner panels. Only named country counterparts appear in the dashboard.
 ├── 00_setup_catalog.ipynb              Unity Catalog and schema initialisation
 ├── 01_network_test.ipynb               API reachability checks from Databricks
 ├── 02_bronze_data360_first_pull.ipynb  World Bank Data360 → bronze.data360_raw
+├── 03_bronze_comtrade_extract.ipynb    UN Comtrade HS6/W00 → bronze.comtrade_hs6_raw
 ├── 04_bronze_imts_extract.ipynb        IMF IMTS bilateral trade → bronze.imts_raw
 ├── 05_bronze_acled_extract.ipynb       ACLED events → bronze.acled_*
 ├── 06_bronze_imf_weo_extract.ipynb     IMF WEO → bronze.imf_weo_raw
@@ -144,6 +151,7 @@ partner panels. Only named country counterparts appear in the dashboard.
 ├── 08_silver_country_dimensions.ipynb  silver.dim_country, silver.dim_bloc_membership
 ├── 09_silver_macro_annual.ipynb        silver.fact_macro_annual
 ├── 10_silver_trade_partner_annual.ipynb silver.fact_trade_partner_annual, silver.trade_partner_concentration_annual
+├── 10b_silver_comtrade_normalize.ipynb silver.comtrade_partner_annual + bilateral coverage
 ├── 11_silver_acled_conflict.ipynb      silver.fact_acled_events/weekly/country_year
 ├── 12_silver_fsi_annual.ipynb          silver.fact_fsi_annual
 ├── 13_audit_cross_source_coverage.ipynb Cross-source coverage and quality audit
@@ -154,6 +162,9 @@ partner panels. Only named country counterparts appear in the dashboard.
 │   ├── databricks_sql.py               Databricks SQL Statement API helper
 │   ├── export_static.py                Queries gold tables → static/data/*.json
 │   ├── audit_dashboard_data.py         Static export and gold-table integrity audit
+│   ├── load_comtrade_silver.py         Local W00 product HS2 recovery path
+│   ├── load_weo_silver.py              Local WEO recovery path
+│   ├── rebuild_gold_dashboard.py       One-time Databricks notebook rebuild helper
 │   └── validate_dashboard_contract.py  Validates row counts and schema
 │
 ├── static/                             GitHub Pages build target
@@ -161,7 +172,7 @@ partner panels. Only named country counterparts appear in the dashboard.
 │   ├── css/styles.css                  Dashboard styling
 │   ├── js/charts.js                    Chart drawing helpers
 │   ├── js/app_static.js                Client-side rendering (reads local JSON)
-│   └── data/                           Exported JSON files (written by CI)
+│   └── data/                           Exported JSON files (committed for local preview, refreshed by CI)
 │
 ├── extraction/                         Local extraction fallback scripts
 │   └── extract/
@@ -172,13 +183,15 @@ partner panels. Only named country counterparts appear in the dashboard.
 │
 ├── data/raw/                           Local raw data landing zone
 │   ├── acled/
+│   ├── comtrade/
 │   ├── imts/
 │   ├── weo/
 │   └── fsi/
 │
 ├── docs/decisions/
 │   ├── ADR-001-extraction-architecture.md
-│   └── ADR-002-bilateral-trade-source.md
+│   ├── ADR-002-bilateral-trade-source.md
+│   └── ADR-003-comtrade-product-structure.md
 │
 ├── .github/workflows/deploy-pages.yml  CI/CD: export + deploy to GitHub Pages
 ├── databricks.yml                      Databricks Asset Bundle config
@@ -197,8 +210,15 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-To preview the dashboard locally against live Databricks data, export the
-gold tables to JSON and serve the static directory:
+To preview the committed static export, serve the static directory:
+
+```bash
+python -m http.server 8080 --directory static
+# open http://localhost:8080
+```
+
+To refresh the dashboard locally against live Databricks data, export the
+gold tables to JSON first:
 
 ```bash
 export DATABRICKS_HOST="dbc-xxxx.cloud.databricks.com"

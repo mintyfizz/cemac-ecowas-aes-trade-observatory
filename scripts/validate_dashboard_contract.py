@@ -31,6 +31,9 @@ REQUIRED_NONZERO = [
     "gold.product_trade_hs2",
 ]
 
+MACRO_SCALE_MIN_USD = 1e11
+MACRO_SCALE_MAX_USD = 1e12
+
 
 def table_count(table_name: str) -> int:
     rows = query(f"SELECT COUNT(*) AS rows FROM {CATALOG}.{table_name}")
@@ -78,6 +81,28 @@ def main() -> int:
     )[0]["rows"]
     print(f"aggregate partner rows present in raw top-partner mart: {aggregate_partners}")
     print("Static export filters aggregate partner rows out of public top-partner panels.")
+
+    macro_anchor = query(
+        f"""
+        SELECT year, gdp_current_usd
+        FROM {CATALOG}.silver.fact_macro_annual
+        WHERE country_iso3 = 'NGA'
+          AND gdp_current_usd IS NOT NULL
+        ORDER BY year DESC
+        LIMIT 1
+        """
+    )
+    if not macro_anchor:
+        failures.append("silver.fact_macro_annual: missing NGA GDP scale anchor row")
+    else:
+        anchor = macro_anchor[0]
+        gdp_usd = float(anchor["gdp_current_usd"])
+        print(f"NGA GDP scale anchor: {anchor['year']} = {gdp_usd / 1e9:,.0f}B USD")
+        if not (MACRO_SCALE_MIN_USD < gdp_usd < MACRO_SCALE_MAX_USD):
+            failures.append(
+                "silver.fact_macro_annual: NGA gdp_current_usd scale looks wrong "
+                f"({gdp_usd}; expected 1e11-1e12 USD)"
+            )
 
     if failures:
         print("\nFailures:")

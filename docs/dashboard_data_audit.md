@@ -1,6 +1,6 @@
 # Dashboard Data Audit
 
-Generated: 2026-05-23 12:34:05 UTC
+Generated: 2026-05-26 08:36:27 UTC
 
 Status: **WARN**
 
@@ -36,7 +36,7 @@ source of truth for those exported files.
 | `country_timeseries.json` | `gold.dashboard_country_timeseries` | 735 | 1990-2024 | 21 | 3 |
 | `top_trade_partners.json` | `gold.dashboard_top_trade_partners` | 3,481 | 1990-2024 | 21 | 3 |
 | `conflict_hotspots.json` | `gold.dashboard_conflict_hotspots` | 284 | n/a | 21 | 3 |
-| `fragility_components.json` | `gold.dashboard_fragility_components` | 21 | n/a | 21 | 2 |
+| `fragility_components.json` | `gold.dashboard_fragility_components` | 21 | n/a | 21 | 3 |
 | `bloc_comparison.json` | `gold.dashboard_bloc_comparison` | 71 | 1990-2024 | 0 | 3 |
 | `product_trade_hs2.json` | `gold.product_trade_hs2` | 48,901 | 1993-2024 | 12 | 0 |
 

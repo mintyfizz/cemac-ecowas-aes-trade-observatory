@@ -1,33 +1,39 @@
 #!/usr/bin/env python3
 """
-Populate bronze.imf_weo_raw and silver.fact_macro_annual from the local
-WEO JSONL file, using the Databricks SQL warehouse REST API.
+Local recovery path for bronze.imf_weo_raw and silver.fact_macro_annual.
+
+Notebook 06 -> notebook 09 is the canonical WEO path. This script is only
+for local recovery from the JSONL extract and must preserve the same scale
+contract as notebook 09: gdp_current_usd is actual USD and
+gdp_current_usd_billions is the dashboard display column.
 
 Usage:
     python scripts/load_weo_silver.py
 
-Requires ~/.databrickscfg with a [cemac-project] section containing token.
+Reads Databricks config from environment variables first, then
+~/.databrickscfg [cemac-project].
 """
 
 from __future__ import annotations
 
-import collections
-import configparser
 import json
-import os
-import sys
 import time
 from datetime import datetime, timezone
 
 import requests
 
+from _dbx_config import dbx_config, require_dbx_config
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
-HOST = "dbc-7b56a3a7-18e9.cloud.databricks.com"
-WH_ID = "9cd578d885df8799"
-CAT = "cemac_ecowas_aes_trade"
+DBX = dbx_config()
+HOST = DBX["host"]
+WH_ID = DBX["warehouse"]
+CAT = DBX["catalog"]
 JSONL_PATH = "data/raw/weo/cemac_ecowas_weo_1990_2024.jsonl"
+MACRO_SCALE_MIN_USD = 1e11
+MACRO_SCALE_MAX_USD = 1e12
 
 # WEO indicator code → silver column name
 INDICATOR_COLUMNS: dict[str, str] = {
@@ -48,10 +54,7 @@ INDICATOR_COLUMNS: dict[str, str] = {
 # ---------------------------------------------------------------------------
 
 def _get_pat() -> str:
-    cfg_path = os.path.expanduser("~/.databrickscfg")
-    cfg = configparser.ConfigParser()
-    cfg.read(cfg_path)
-    return cfg["cemac-project"]["token"]
+    return DBX["token"]
 
 
 def _headers(pat: str) -> dict[str, str]:
@@ -137,10 +140,11 @@ def load_and_pivot(jsonl_path: str):
     """
     Read the WEO JSONL and pivot to one dict per (country_iso3, year).
 
-    IMF SDMX stores raw (unscaled) OBS_VALUE:
-      - LP   (population): scale=6 → divide by 10^6 → millions of persons
-      - NGDPD (GDP USD):   scale=9 → divide by 10^9 → USD billions
-      - All %GDP / growth / per-capita indicators: scale=0, no conversion
+    Scale contract, matching notebook 09:
+      - gdp_current_usd stays at actual USD scale
+      - population stays at persons scale
+      - *_billions and *_millions columns are dashboard display columns
+      - %GDP / growth / per-capita indicators are stored as published
 
     Returns (bronze_records, silver_records).
     """
@@ -167,11 +171,11 @@ def load_and_pivot(jsonl_path: str):
                 raw_pivot[key] = {"country_iso3": iso3, "year": year}
             raw_pivot[key][code] = float(value) if value is not None else None
 
-    # Derive calculated columns with correct scale factors applied
+    # Derive display columns without rescaling the base facts.
     silver_records = []
     for (iso3, year), raw in sorted(raw_pivot.items()):
-        ngdpd_raw = raw.get("NGDPD")        # raw USD (scale=9 → billions)
-        lp_raw = raw.get("LP")              # raw persons (scale=6 → millions)
+        ngdpd_raw = raw.get("NGDPD")        # actual USD
+        lp_raw = raw.get("LP")              # persons
         debt_pct = raw.get("GGXWDG_NGDP")  # already % GDP (scale=0)
 
         gdp_b = ngdpd_raw / 1e9 if ngdpd_raw is not None else None  # USD billions
@@ -209,10 +213,19 @@ def load_and_pivot(jsonl_path: str):
     print(f"  Reporters: {reporters}")
     print(f"  Indicators: {indicators}")
     print(f"  Silver rows (country×year): {len(silver_records):,}")
-    # Sanity-check a known value (NGA 2023 GDP ~ $487B, population ~228M)
-    sample = next((r for r in silver_records if r["country_iso3"] == "NGA" and r["year"] == 2023), None)
+    nga_rows = [
+        r for r in silver_records
+        if r["country_iso3"] == "NGA" and r.get("gdp_current_usd") is not None
+    ]
+    sample = max(nga_rows, key=lambda r: r["year"], default=None)
     if sample:
-        print(f"  NGA 2023 sample: gdp_billions={sample.get('gdp_current_usd_billions'):.1f}"
+        gdp_usd = sample.get("gdp_current_usd")
+        if not (MACRO_SCALE_MIN_USD < gdp_usd < MACRO_SCALE_MAX_USD):
+            raise ValueError(
+                f"NGDPD scale assumption looks wrong: NGA GDP came out as {gdp_usd}. "
+                "Expected 1e11-1e12 USD."
+            )
+        print(f"  NGA {sample['year']} sample: gdp_billions={sample.get('gdp_current_usd_billions'):.1f}"
               f"  pop_millions={sample.get('population_millions'):.1f}"
               f"  gdp_per_capita={sample.get('gdp_per_capita_current_usd')}")
     return bronze_records, silver_records
@@ -291,6 +304,7 @@ USING DELTA
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    require_dbx_config(DBX, "host", "warehouse", "token")
     pat = _get_pat()
     print(f"PAT loaded (ends ...{pat[-6:]})\n")
 

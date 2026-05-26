@@ -11,35 +11,34 @@ Run this after load_weo_silver.py has completed successfully.
 
 from __future__ import annotations
 
-import configparser
-import os
 import sys
 import time
 
 import requests
 
-HOST = "dbc-7b56a3a7-18e9.cloud.databricks.com"
-WORKSPACE_USER = "nathangatse@outlook.com"
+from _dbx_config import dbx_config, require_dbx_config
 
-NOTEBOOKS = [
-    {
-        "run_name": "rebuild-gold-core-marts-14",
-        "path": f"/Users/{WORKSPACE_USER}/14_gold_dashboard_core_marts",
-        "description": "gold.country_year_observatory + bloc_year_observatory",
-    },
-    {
-        "run_name": "rebuild-gold-panel-marts-15",
-        "path": f"/Users/{WORKSPACE_USER}/15_gold_dashboard_panel_marts",
-        "description": "gold.dashboard_country_timeseries + panel marts",
-    },
-]
+DBX = dbx_config()
+HOST = DBX["host"]
+
+
+def notebooks(workspace_user: str) -> list[dict[str, str]]:
+    return [
+        {
+            "run_name": "rebuild-gold-core-marts-14",
+            "path": f"/Users/{workspace_user}/14_gold_dashboard_core_marts",
+            "description": "gold.country_year_observatory + bloc_year_observatory",
+        },
+        {
+            "run_name": "rebuild-gold-panel-marts-15",
+            "path": f"/Users/{workspace_user}/15_gold_dashboard_panel_marts",
+            "description": "gold.dashboard_country_timeseries + panel marts",
+        },
+    ]
 
 
 def _get_pat() -> str:
-    cfg_path = os.path.expanduser("~/.databrickscfg")
-    cfg = configparser.ConfigParser()
-    cfg.read(cfg_path)
-    return cfg["cemac-project"]["token"]
+    return DBX["token"]
 
 
 def _headers(pat: str) -> dict[str, str]:
@@ -125,10 +124,11 @@ def poll_run(pat: str, run_id: str, notebook_label: str, poll_interval: int = 20
 
 
 def main() -> None:
+    require_dbx_config(DBX, "host", "token", "user")
     pat = _get_pat()
     print(f"PAT loaded (ends ...{pat[-6:]})\n")
 
-    for nb in NOTEBOOKS:
+    for nb in notebooks(DBX["user"]):
         print(f"Submitting: {nb['run_name']}")
         print(f"  Notebook: {nb['path']}")
         print(f"  Builds:   {nb['description']}")

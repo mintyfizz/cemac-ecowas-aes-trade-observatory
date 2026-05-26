@@ -594,7 +594,7 @@ function localProducts(bloc, year, country, flow) {
     available: true,
     coverage_note: `UN Comtrade · ${reporters.size} of ${members.size} ${bloc} reporters · ${year}`,
     data_year: year,
-    coverage_detail: `Reported HS2 ${selectedFlow} total covers ${fmtPct(coverage.valueCoveragePct, 0)} of ${bloc} ${selectedFlow}s.`,
+    coverage_detail: `Product structure is primarily a country-level view. Reported HS2 ${selectedFlow} total covers ${fmtPct(coverage.valueCoveragePct, 0)} of ${bloc} ${selectedFlow}s.`,
     scope_type: "bloc",
     rows,
   };
@@ -733,13 +733,19 @@ function localOperational(bloc, year, country) {
         }, {}))
         .sort((a, z) => (z.violent_events ?? 0) - (a.violent_events ?? 0) || (z.fatalities ?? 0) - (a.fatalities ?? 0) || a.country_name.localeCompare(z.country_name));
 
-  const fragility = DB.fragility
-    .filter(r => isCountry ? r.country_iso3 === country : r.analytical_bloc_code === bloc)
+  let fragilityRows = DB.fragility
+    .filter(r => isCountry ? r.country_iso3 === country : r.analytical_bloc_code === bloc);
+  if (!isCountry && fragilityRows.length === 0) {
+    const members = new Set(BLOCS[bloc] || []);
+    fragilityRows = DB.fragility.filter(r => members.has(r.country_iso3));
+  }
+
+  const fragility = fragilityRows
     .sort((a, z) => (z.fsi_total_score ?? 0) - (a.fsi_total_score ?? 0))
     .map(r => ({
       country_iso3: r.country_iso3,
       country_name: r.country_name,
-      analytical_bloc_code: r.analytical_bloc_code,
+      analytical_bloc_code: isCountry ? r.analytical_bloc_code : bloc,
       fsi_total_score: r.fsi_total_score,
       cohesion_score: r.cohesion_score,
       economic_score: r.economic_score,
@@ -1181,7 +1187,7 @@ async function loadProducts(version) {
     }
     if (noteEl) noteEl.textContent = data.scope_type === "country"
       ? "Country product panels use reporter-submitted selected-year HS2 rows only."
-      : "Bloc product composition requires at least 50% reporter coverage and 50% value coverage. Country drilldown shows reporter-submitted selected-year rows where available.";
+      : "Product structure is primarily a country-level view. Bloc composition requires at least 50% reporter coverage and 50% value coverage.";
     return;
   }
 
@@ -1190,7 +1196,7 @@ async function loadProducts(version) {
   if (subEl) subEl.textContent = data.coverage_note || `UN Comtrade · ${State.year}`;
   if (noteEl) {
     noteEl.textContent = data.coverage_detail ||
-      "Reporter-submitted UN Comtrade HS2 values. Shares are within the reported flow and scope.";
+      "Reporter-submitted UN Comtrade HS2 values. Product structure is primarily a country-level view; bloc views require representative reporter and value coverage.";
   }
   renderProducts(data.rows, State.productsFlow);
 }
