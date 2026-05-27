@@ -237,7 +237,9 @@ function loadWorld() {
 async function renderMap(rows, state, metricMeta, version) {
   const svg = d3.select("#map-svg");
   const tooltip = d3.select("#map-tooltip");
+  const legendRoot = d3.select(".map-legend");
   tooltip.style("opacity", 0);
+  legendRoot.selectAll(".scale-legend").remove();
   svg.selectAll("*").remove();
 
   if (!rows || !rows.length) {
@@ -277,9 +279,9 @@ async function renderMap(rows, state, metricMeta, version) {
     .filter(Number.isFinite);
   const min = values.length ? Math.min(...values) : 0;
   const max = values.length ? Math.max(...values) : 1;
-  const scale = d3.scaleQuantize()
-    .domain(min === max ? [min - 1, max + 1] : [min, max])
-    .range(COLORS.teal);
+  const colorScale = (values.length && new Set(values).size > 1)
+    ? d3.scaleQuantile().domain(values).range(COLORS.teal)
+    : d3.scaleQuantize().domain([min - 1, max + 1]).range(COLORS.teal);
 
   const root = svg.append("g").attr("class", "map-root");
 
@@ -307,7 +309,7 @@ async function renderMap(rows, state, metricMeta, version) {
       const iso = COUNTRY_NUMERIC_TO_ISO[String(feature.id)];
       const row = rowByIso.get(iso);
       const value = metricValue(row, state.mapMetric);
-      return Number.isFinite(value) ? scale(value) : "#20211e";
+      return Number.isFinite(value) ? colorScale(value) : "#20211e";
     })
     .attr("stroke", feature => {
       const iso = COUNTRY_NUMERIC_TO_ISO[String(feature.id)];
@@ -364,7 +366,7 @@ async function renderMap(rows, state, metricMeta, version) {
       .attr("cx", cx)
       .attr("cy", cy)
       .attr("r", state.country === "CPV" ? 5 : 4)
-      .attr("fill", Number.isFinite(metricValue(cpvRow, state.mapMetric)) ? scale(metricValue(cpvRow, state.mapMetric)) : "#20211e")
+      .attr("fill", Number.isFinite(metricValue(cpvRow, state.mapMetric)) ? colorScale(metricValue(cpvRow, state.mapMetric)) : "#20211e")
       .attr("stroke", blocColor(cpvRow?.analytical_bloc_code))
       .attr("stroke-width", state.country === "CPV" ? 2.5 : 1.4)
       .on("mousemove", event => {
@@ -391,6 +393,28 @@ async function renderMap(rows, state, metricMeta, version) {
       .attr("y", cy - 8)
       .text("CPV");
   }
+
+  const scaleLegend = legendRoot.append("div")
+    .attr("class", "scale-legend")
+    .style("display", "flex")
+    .style("align-items", "center")
+    .style("gap", "6px")
+    .style("font-size", "11px")
+    .style("color", COLORS.muted);
+  scaleLegend.append("span").text(metricMeta.format(min));
+  const swatches = scaleLegend.append("div").style("display", "flex");
+  COLORS.teal.forEach(color => {
+    swatches.append("i")
+      .style("display", "inline-block")
+      .style("width", "22px")
+      .style("height", "8px")
+      .style("background", color);
+  });
+  scaleLegend.append("span").text(metricMeta.format(max));
+  scaleLegend.append("span")
+    .style("opacity", "0.7")
+    .style("margin-left", "4px")
+    .text(`· ${metricMeta.label}`);
 }
 
 function renderPartnerBars(rows) {
@@ -658,7 +682,7 @@ function renderIntegration(rows, state) {
       labels: years,
       datasets: blocs.map(bloc => ({
         label: bloc,
-        data: years.map(year => rows.find(row => row.year === year && row.analytical_bloc_code === bloc)?.intra_share_pct ?? null),
+        data: years.map(year => rows.find(row => row.year === year && row.analytical_bloc_code === bloc)?.openness_pct_gdp ?? null),
         borderColor: blocColor(bloc),
         backgroundColor: blocColor(bloc),
         borderWidth: bloc === state.bloc ? 2.6 : 1.2,
@@ -668,10 +692,10 @@ function renderIntegration(rows, state) {
         spanGaps: true,
       })),
     },
-    options: lineOptions("Trade openness proxy (% of GDP)", "Trade / GDP (%)", {
+    options: lineOptions("Trade openness (% of GDP)", "Trade / GDP (%)", {
       plugins: {
         legend: { position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 3, usePointStyle: true, pointStyle: "line" } },
-        title: { display: true, text: "Trade openness proxy (% of GDP)", color: COLORS.text, font: { size: 12, weight: "500" } },
+        title: { display: true, text: "Trade openness (% of GDP)", color: COLORS.text, font: { size: 12, weight: "500" } },
         tooltip: {
           backgroundColor: "#11120f",
           borderColor: "#55564f",
@@ -901,17 +925,59 @@ function renderConflict(rows) {
   const ctx = canvas("conflict-chart");
   if (!ctx) return;
   if (!rows || !rows.length) return chartEmpty("conflict-chart", "No ACLED hotspot data.");
-  const selected = [...rows].sort((a, b) => (b.violent_events || 0) - (a.violent_events || 0)).slice(0, 10).reverse();
+  const selected = [...rows]
+    .sort((a, b) => (b.violent_events || 0) - (a.violent_events || 0))
+    .slice(0, 10)
+    .reverse();
+
   chartStore["conflict-chart"] = new Chart(ctx, {
     type: "bar",
     data: {
       labels: selected.map(row => row.admin1 || row.country_name || row.country_iso3),
       datasets: [
-        { label: "Violent events", data: selected.map(row => row.violent_events || 0), backgroundColor: "#d9c875" },
-        { label: "Fatalities", data: selected.map(row => row.fatalities || 0), backgroundColor: "#d87b8a" },
+        {
+          label: "Violent events",
+          data: selected.map(row => row.violent_events || 0),
+          backgroundColor: "#d9c875",
+          xAxisID: "x-events",
+        },
+        {
+          label: "Fatalities",
+          data: selected.map(row => row.fatalities || 0),
+          backgroundColor: "#d87b8a",
+          xAxisID: "x-fatalities",
+        },
       ],
     },
-    options: barOptions("Conflict events & fatalities", "Count"),
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      indexAxis: "y",
+      interaction: { mode: "index", axis: "y", intersect: false },
+      plugins: {
+        legend: { position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 3 } },
+        title: { display: true, text: "Conflict events & fatalities", color: COLORS.text, font: { size: 12, weight: "500" } },
+        tooltip: { backgroundColor: "#11120f", borderColor: "#55564f", borderWidth: 1 },
+      },
+      scales: {
+        "x-events": {
+          position: "top",
+          beginAtZero: true,
+          grid: { color: COLORS.grid },
+          ticks: { color: "#d9c875" },
+          title: { display: true, text: "Violent events", color: "#d9c875" },
+        },
+        "x-fatalities": {
+          position: "bottom",
+          beginAtZero: true,
+          grid: { drawOnChartArea: false },
+          ticks: { color: "#d87b8a" },
+          title: { display: true, text: "Fatalities", color: "#d87b8a" },
+        },
+        y: { grid: { color: "rgba(0,0,0,0)" }, ticks: { color: COLORS.text } },
+      },
+    },
   });
 }
 
@@ -919,6 +985,14 @@ function renderFragility(rows) {
   const ctx = canvas("fragility-chart");
   if (!ctx) return;
   if (!rows || !rows.length) return chartEmpty("fragility-chart", "No FSI data.");
+
+  const years = rows.map(r => r.fsi_year).filter(Number.isFinite);
+  const yearLabel = years.length === 0
+    ? "latest"
+    : Math.min(...years) === Math.max(...years)
+      ? `${Math.min(...years)}`
+      : `${Math.min(...years)}–${Math.max(...years)}`;
+  const title = `Fragility components (FSI ${yearLabel})`;
 
   const labels = ["Cohesion", "Economic", "Political", "Social"];
   if (rows.length === 1) {
@@ -935,7 +1009,7 @@ function renderFragility(rows) {
           pointBackgroundColor: COLORS.imports,
         }],
       },
-      options: radarOptions("Fragility components (latest FSI)", 30),
+      options: radarOptions(title, 30),
     });
     return;
   }
@@ -952,7 +1026,7 @@ function renderFragility(rows) {
         { label: "Social", data: top.map(row => row.social_cross_cutting_score || 0), backgroundColor: COLORS.exports },
       ],
     },
-    options: barOptions("Fragility components (latest FSI)", "Score"),
+    options: barOptions(title, "Score"),
   });
 }
 

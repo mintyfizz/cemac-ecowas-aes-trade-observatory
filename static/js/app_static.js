@@ -476,24 +476,48 @@ function localConcentration(bloc, year, country) {
         year: r.year,
       }));
   } else {
-    // Trade-weighted HHI per year per bloc
-    const byYearBloc = {};
-    for (const r of DB.timeseries) {
-      const key = `${r.year}__${r.analytical_bloc_code}`;
-      if (!byYearBloc[key]) byYearBloc[key] = { year: r.year, analytical_bloc_code: r.analytical_bloc_code, num: 0, den: 0 };
-      if (r.total_trade_partner_hhi != null && r.total_trade_billions_usd != null) {
-        byYearBloc[key].num += r.total_trade_partner_hhi * r.total_trade_billions_usd;
-        byYearBloc[key].den += r.total_trade_billions_usd;
+    // True bloc HHI: aggregate partner trade across current members, then
+    // compute HHI on the bloc's partner-share distribution.
+    //
+    // The static partner export keeps the top 15 partners per reporter, so
+    // long-tail partners are clipped. That biases this result high, but it is
+    // still the correct aggregation grain for a bloc-level HHI.
+    const blocsToShow = ["CEMAC", "ECOWAS", "AES"];
+    const years = [...new Set(DB.partners.map(r => r.year).filter(Number.isFinite))].sort((a, z) => a - z);
+    hhi = [];
+    for (const b of blocsToShow) {
+      const members = new Set(BLOCS[b] || []);
+      for (const y of years) {
+        const partnerTotals = {};
+        let total = 0;
+        for (const r of DB.partners) {
+          if (r.year !== y) continue;
+          if (!members.has(r.country_iso3)) continue;
+          if (!ISO3_RE.test(r.counterpart_iso3)) continue;
+          const v = r.total_trade_billions_usd ?? 0;
+          partnerTotals[r.counterpart_iso3] = (partnerTotals[r.counterpart_iso3] ?? 0) + v;
+          total += v;
+        }
+        let h = null;
+        if (total > 0) {
+          h = 0;
+          for (const v of Object.values(partnerTotals)) {
+            const s = v / total;
+            h += s * s;
+          }
+        }
+        hhi.push({ year: y, analytical_bloc_code: b, hhi: h });
       }
     }
-    hhi = Object.values(byYearBloc)
-      .sort((a, z) => a.year - z.year)
-      .map(r => ({ year: r.year, analytical_bloc_code: r.analytical_bloc_code, hhi: r.den ? r.num / r.den : null }));
   }
 
   const intra = DB.bloc
     .sort((a, z) => a.year - z.year)
-    .map(r => ({ year: r.year, analytical_bloc_code: r.analytical_bloc_code, intra_share_pct: r.trade_openness_pct_gdp }));
+    .map(r => ({
+      year: r.year,
+      analytical_bloc_code: r.analytical_bloc_code,
+      openness_pct_gdp: r.trade_openness_pct_gdp,
+    }));
 
   return { hhi, intra };
 }
@@ -1128,6 +1152,9 @@ async function loadConcentration(version) {
   const data = localConcentration(State.bloc, State.year, State.country);
   if (!isFresh(version)) return;
   document.getElementById("hhi-title").textContent = State.country ? `${scopeName()} · Partner concentration (HHI)` : "Partner concentration (HHI)";
+  document.getElementById("hhi-sub").textContent = State.country
+    ? "Country HHI from annual partner concentration. 0.15 = diversified · 0.25 = highly concentrated."
+    : "Bloc HHI computed on aggregated partner shares (top-15-per-reporter subset). 0.15 = diversified · 0.25 = highly concentrated.";
   renderHHI(data, State);
   renderIntegration(data.intra || [], State);
 }
