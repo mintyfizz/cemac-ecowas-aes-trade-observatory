@@ -279,6 +279,10 @@ python scripts/audit_dashboard_data.py --check-only
 `scripts/validate_dashboard_contract.py` also checks live Databricks row counts
 and the Nigeria GDP scale anchor when credentials are present.
 
+## License
+
+This project is released under the [MIT License](LICENSE).
+
 ## Author
 
 Nathan Thomas Gatse - International Business and Data Science, Protection &
