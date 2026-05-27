@@ -1,245 +1,291 @@
-# CEMAC–ECOWAS–AES Trade Observatory
+# CEMAC-ECOWAS-AES Trade Observatory
 
-A Databricks lakehouse platform tracking trade flows, partner dependencies,
-and structural economic vulnerability across CEMAC, ECOWAS, and the
-Alliance of Sahel States (AES). Covers 21 countries from 1990 to 2024.
+[![Deploy static dashboard to GitHub Pages](https://github.com/mintyfizz/cemac-ecowas-aes-trade-observatory/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/mintyfizz/cemac-ecowas-aes-trade-observatory/actions/workflows/deploy-pages.yml)
 
-**Live dashboard → [mintyfizz.github.io/cemac-ecowas-aes-trade-observatory](https://mintyfizz.github.io/cemac-ecowas-aes-trade-observatory)**
+A Databricks lakehouse and static public dashboard for tracking trade flows,
+partner dependence, macro-fiscal exposure, conflict, and fragility across
+CEMAC, ECOWAS, and the Alliance of Sahel States (AES).
 
-The dashboard is a fully static site hosted on GitHub Pages. Every push to
-`main` triggers a GitHub Actions workflow that queries the Databricks gold
-tables, exports them to JSON, and redeploys the site automatically. No
-server or API key is needed to view it.
+**Live dashboard:** <https://mintyfizz.github.io/cemac-ecowas-aes-trade-observatory/>
 
----
+The public dashboard is hosted on GitHub Pages. There is no public backend and
+no runtime secret in the browser. The site reads pre-exported JSON files under
+`static/data/`; GitHub Actions refreshes those files from Databricks gold tables
+for each Pages deployment.
 
-## Dashboard
+## What This Project Demonstrates
 
-The dashboard is organised into seven data-backed sections:
+- A medallion lakehouse pipeline on Databricks using bronze, silver, and gold
+  Delta tables.
+- Multi-source reconciliation across IMF trade, IMF macroeconomic data, UN
+  Comtrade product data, ACLED conflict data, and Fund for Peace FSI data.
+- Time-aware analytical bloc membership, including the recent AES split.
+- Contract-checked static exports for a dashboard that can be opened from a
+  fresh clone without Databricks access.
+- Clear interpretation rules for incomplete product coverage, latest-available
+  fragility data, and snapshot panels.
 
-| Panel | What it shows |
-|---|---|
-| **Overview** | Country map coloured by a selectable metric (trade volume, openness, HHI, GDP, fragility, conflict fatalities). Click a country to drill in. Summary stat cards per bloc. |
-| **Economic profile** | GDP, population, debt, inflation, fiscal balance, and other macro cards for the selected scope. |
-| **Trading partners** | Top 10 trading partners by year (bar chart) and a two-partner share comparison over time (line chart). IMF aggregate groups excluded. |
-| **Concentration & regional integration** | Partner concentration (HHI) trend and bloc-level trade openness as a proxy for regional integration. |
-| **Growth & trade structure** | Trade indexed to 1990 base = 100, and a trade exposure profile showing exports, imports, and balance as shares of GDP. |
-| **Product trade structure** | Top HS2 export/import sectors from `gold.product_trade_hs2`, with explicit empty states where selected-year product coverage is absent. |
-| **Operational context** | ACLED conflict events and fatalities (latest 3-year hotspot window), FSI fragility component breakdown, and a normalised macro-fiscal pressure diagnostic. |
+## Dashboard Surface
 
-### How the static build works
+| Area | What it answers |
+| --- | --- |
+| Map and overview | Which countries/blocs have the largest trade, GDP, openness, partner concentration, conflict burden, or fragility score in a selected year? |
+| Economic profile | What does the selected country or bloc look like across GDP, population, debt, inflation, fiscal balance, current account, and trade intensity? |
+| Trading partners | Which named country partners dominate trade, and how concentrated is dependence on the top partner and top three partners? |
+| Partner concentration | How concentrated is partner trade over time, measured with HHI? Bloc HHI is computed from aggregated partner shares, not a weighted average of member HHIs. |
+| Trade openness | How large are exports plus imports relative to GDP over time? |
+| Growth and exposure | How has total trade grown since 1990, and how exposed is the selected scope through exports, imports, and trade balance as shares of GDP? |
+| Product structure | Which HS2 sectors dominate exports or imports where UN Comtrade coverage is sufficient? |
+| Operational context | Where are conflict hotspots, how do latest-available FSI components compare, and what macro-fiscal pressures stand out? |
+| Pipeline health | Which rows, years, countries, and source caveats are present in the static export? |
 
+## Interpretation Rules
+
+These rules are intentional and are enforced either in the data mart, frontend,
+or audit layer.
+
+- **Time series use historical analytical membership.** AES appears as an
+  analytical bloc only from the 2024 split onward; earlier Mali, Burkina Faso,
+  and Niger rows remain historical ECOWAS rows.
+- **Snapshot panels use current membership.** Conflict hotspots and FSI
+  components are latest-window or latest-available panels, so the frontend
+  scopes bloc views by the current dashboard membership map. This keeps AES
+  populated even when the latest FSI source year predates the split.
+- **FSI is latest available, not necessarily current-year.** The current static
+  export uses FSI components through 2023.
+- **ACLED conflict is a latest-window operational view.** It is not a selected
+  single-year chart.
+- **Bloc HHI is calculated at bloc grain.** Partner totals are aggregated across
+  current members first, then HHI is computed on the resulting partner-share
+  distribution. The static partner export keeps the top 15 partners per
+  reporter, so bloc HHI can still be biased upward by clipped long-tail
+  partners.
+- **Product charts are coverage-gated.** Bloc-level HS2 product structure is
+  shown only when reporter and value coverage meet the dashboard thresholds.
+  Otherwise the dashboard shows an insufficient-coverage state instead of
+  implying precision.
+- **Missing values stay missing.** Nulls are never rendered as zeros.
+
+## Pipeline Architecture
+
+```text
+External sources
+  -> bronze Delta tables
+  -> silver reconciled facts and dimensions
+  -> gold dashboard marts
+  -> static/data/*.json
+  -> GitHub Pages dashboard
 ```
-git push → GitHub Actions
-  └── scripts/export_static.py          queries Databricks gold tables
-        ├── static/data/country_timeseries.json
-        ├── static/data/top_trade_partners.json
-        ├── static/data/conflict_hotspots.json
-        ├── static/data/fragility_components.json
-        ├── static/data/bloc_comparison.json
-        └── static/data/product_trade_hs2.json
-  └── runs scripts/audit_dashboard_data.py
-  └── uploads static/ → GitHub Pages
+
+The Databricks catalog is `cemac_ecowas_aes_trade`.
+
+### Bronze
+
+| Table | Source | Role |
+| --- | --- | --- |
+| `bronze.imts_raw` | IMF IMTS / DOTS | Annual bilateral goods exports and imports, 1990-2024. |
+| `bronze.comtrade_hs6_raw` | UN Comtrade | Product trade extract used for HS2 product structure. |
+| `bronze.acled_events_historical` | ACLED | Event-level conflict records. |
+| `bronze.acled_weekly_aggregated` | ACLED | Country-week conflict rollups. |
+| `bronze.imf_weo_raw` | IMF WEO | GDP, debt, fiscal balance, inflation, current account, and related macro indicators. |
+| `bronze.fsi_raw` | Fund for Peace FSI | Total and component fragility scores. |
+| `bronze.data360_raw` | World Bank Data360 | Reachability and Delta time-travel demonstration; not a dashboard source. |
+
+### Silver
+
+| Table | Role |
+| --- | --- |
+| `silver.dim_country` | Country metadata, current primary bloc, and names. |
+| `silver.dim_bloc_membership` | Time-aware country-to-bloc membership. |
+| `silver.fact_macro_annual` | Typed macroeconomic and trade-intensity facts per country-year. |
+| `silver.fact_trade_partner_annual` | Bilateral reporter-partner trade totals. |
+| `silver.trade_partner_concentration_annual` | Country-level partner HHI. |
+| `silver.comtrade_partner_annual` | Bilateral Comtrade partner data for coverage overrides. |
+| `silver.comtrade_hs2_annual_w00` | National-total HS2 product data for product structure. |
+| `silver.comtrade_product_coverage` | Coverage flags for product chart eligibility. |
+| `silver.fact_acled_events` | Clean event-level conflict data. |
+| `silver.fact_acled_weekly` | Country-week conflict aggregates. |
+| `silver.fact_acled_country_year` | Country-year conflict metrics. |
+| `silver.fact_fsi_annual` | Normalized annual FSI scores and components. |
+
+### Gold
+
+| Table | Role |
+| --- | --- |
+| `gold.country_year_observatory` | Joined country-year observatory record. |
+| `gold.country_latest_snapshot` | Latest country snapshot. |
+| `gold.bloc_year_observatory` | Bloc-year aggregate observatory record. |
+| `gold.bloc_latest_snapshot` | Latest bloc snapshot. |
+| `gold.dashboard_country_timeseries` | Map, overview, macro profile, growth, and exposure panels. |
+| `gold.dashboard_top_trade_partners` | Partner bars and partner dependence diagnostics. |
+| `gold.dashboard_conflict_hotspots` | Operational conflict panel. |
+| `gold.dashboard_fragility_components` | FSI component panel. |
+| `gold.dashboard_bloc_comparison` | Bloc comparison and trade openness trend. |
+| `gold.product_trade_hs2` | HS2 export/import product structure. |
+
+## Data Sources
+
+| Source | Used for | Notes |
+| --- | --- | --- |
+| IMF IMTS / DOTS | Bilateral goods trade by reporter, partner, and year | Primary source for partner-dependence layer. |
+| UN Comtrade | HS2 product trade structure | Product panel uses national-total W00 rows and coverage gates. |
+| IMF World Economic Outlook | GDP and macro-fiscal indicators | Includes a CI scale anchor for Nigeria GDP to catch unit errors. |
+| ACLED | Conflict events and fatalities | Operational context, latest loaded hotspot window. |
+| Fund for Peace FSI | Fragility total and component scores | Latest available coverage through 2023 in the current export. |
+| World Bank Data360 | Engineering demonstration | Kept as a bronze reachability/time-travel example, not a dashboard source. |
+
+## Country And Bloc Scope
+
+The project covers 21 countries.
+
+| Dashboard scope | Countries |
+| --- | --- |
+| CEMAC | Cameroon, Central African Republic, Chad, Congo, Equatorial Guinea, Gabon |
+| ECOWAS current non-AES members | Benin, Cabo Verde, Cote d'Ivoire, Gambia, Ghana, Guinea, Guinea-Bissau, Liberia, Nigeria, Senegal, Sierra Leone, Togo |
+| AES | Mali, Burkina Faso, Niger |
+
+Historically, AES members are treated as ECOWAS members before the 2024 split
+for annual time-series panels. Latest snapshot panels show them under AES.
+
+## Static Deployment
+
+```text
+push to main
+  -> .github/workflows/deploy-pages.yml
+  -> scripts/export_static.py
+  -> node --check static/js/*.js
+  -> scripts/audit_dashboard_data.py --check-only
+  -> scripts/validate_dashboard_contract.py
+  -> upload static/ to GitHub Pages
 ```
 
-The browser loads the six JSON files at startup. All filtering, chart
-rendering, and map colouring happens client-side with no back-end calls.
+Exported dashboard files:
 
----
-
-## Architecture
-
-The pipeline follows a medallion pattern inside a single Unity Catalog
-catalog (`cemac_ecowas_aes_trade`) on Databricks Free Edition:
-
-```
-Raw sources → Bronze (Delta) → Silver (Delta) → Gold marts → Static JSON → GitHub Pages
+```text
+static/data/country_timeseries.json
+static/data/top_trade_partners.json
+static/data/conflict_hotspots.json
+static/data/fragility_components.json
+static/data/bloc_comparison.json
+static/data/product_trade_hs2.json
 ```
 
-### Bronze layer — raw, append-only, replayable
+The committed `static/data/` files make local preview possible without
+Databricks credentials. The deployed Pages artifact is refreshed from live
+Databricks during CI.
 
-| Table | Source | Contents |
-|---|---|---|
-| `bronze.data360_raw` | World Bank Data360 | Network-reachability and Delta time-travel demonstration; not read by downstream dashboard marts |
-| `bronze.imts_raw` | IMF IMTS / DOTS API | Annual bilateral goods exports and imports for all 21 countries and their partners, 1990–2024 |
-| `bronze.comtrade_hs6_raw` | UN Comtrade | HS6 product rows from local extract, including W00 national totals for product structure |
-| `bronze.acled_events_historical` | ACLED | Individual conflict events (coordinates, actor, event type, fatalities), 1990–2024 |
-| `bronze.acled_weekly_aggregated` | ACLED | Country-week rollup of event counts and fatalities |
-| `bronze.imf_weo_raw` | IMF World Economic Outlook | Debt-to-GDP, fiscal balance, inflation, current account, 1990–2024 |
-| `bronze.fsi_raw` | Fund for Peace FSI | Composite and component fragility scores per country per year |
+## Local Preview
 
-### Silver layer — reconciled, typed, time-aware
+No Databricks access is required to preview the committed dashboard export.
 
-| Table | Contents |
-|---|---|
-| `silver.dim_country` | ISO3 code, country name, region, bloc flags |
-| `silver.dim_bloc_membership` | Country–bloc mapping with primary analytical bloc flag |
-| `silver.fact_macro_annual` | GDP, trade openness, debt ratios, and fiscal indicators per country per year |
-| `silver.fact_trade_partner_annual` | Bilateral export and import totals per reporter–partner–year |
-| `silver.trade_partner_concentration_annual` | Herfindahl-Hirschman Index (HHI) of partner concentration per country per year |
-| `silver.comtrade_partner_annual` | Bilateral Comtrade partner totals used only where coverage is good |
-| `silver.comtrade_hs2_annual_w00` | W00 national-total HS2 product trade for product-structure charts |
-| `silver.comtrade_product_coverage` | Product coverage flags for HS2 dashboard eligibility |
-| `silver.fact_acled_events` | Cleaned and typed individual conflict events |
-| `silver.fact_acled_weekly` | Country-week event and fatality aggregates |
-| `silver.fact_acled_country_year` | Country-year conflict summary (events, fatalities, fatalities per million) |
-| `silver.fact_fsi_annual` | Normalised FSI total and component scores per country per year |
+```bash
+python -m http.server 8080 --directory static
+```
 
-### Gold layer — pre-aggregated mart tables
+Open <http://localhost:8080>.
 
-#### Core observatory tables (notebook 14)
+## Refreshing From Databricks
 
-| Table | Contents |
-|---|---|
-| `gold.country_year_observatory` | Full joined country–year record: trade, macro, conflict, and fragility |
-| `gold.country_latest_snapshot` | Single-row-per-country snapshot at the latest available year |
-| `gold.bloc_year_observatory` | Bloc-level aggregated view per year |
-| `gold.bloc_latest_snapshot` | Single-row-per-bloc snapshot at latest year |
+Create a local `.env` file or export the variables directly:
 
-#### Dashboard panel marts (notebook 15)
+```bash
+DATABRICKS_HOST=dbc-xxxx.cloud.databricks.com
+DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/xxxx
+DATABRICKS_TOKEN=...
+DATABRICKS_CATALOG=cemac_ecowas_aes_trade
+```
 
-| Table | Rows | Powers |
-|---|---|---|
-| `gold.dashboard_country_timeseries` | 735 | Overview map, economic profile, growth chart |
-| `gold.dashboard_top_trade_partners` | 11,025 | Top 10 partners bar chart, two-partner comparison |
-| `gold.dashboard_conflict_hotspots` | 284 | Conflict events & fatalities panel |
-| `gold.dashboard_fragility_components` | 21 | FSI fragility component breakdown |
-| `gold.dashboard_bloc_comparison` | 71 | Regional integration and HHI trend charts |
-| `gold.product_trade_hs2` | exported by CI | HS2 export/import sector panel |
+Then run:
 
----
+```bash
+pip install -r requirements.txt
+python scripts/export_static.py
+python scripts/audit_dashboard_data.py --check-only
+python scripts/validate_dashboard_contract.py
+```
 
-## Data sources
+For a full gold-table rebuild from Databricks notebooks:
 
-| Source | What it provides | Coverage | Access |
-|---|---|---|---|
-| IMF IMTS / DOTS | Annual bilateral goods exports and imports by partner | 1990–2024 | Public API |
-| UN Comtrade | HS2 product structure from W00 national-total rows | 1993–2024 in current export | Local extract |
-| ACLED | Conflict events, fatalities, actor types | 1990–2024 | Research key |
-| IMF WEO | Debt-to-GDP, fiscal balance, inflation, current account | 1990–2024 | Public CSV |
-| Fund for Peace FSI | Composite and 12-component fragility scores | 2006–2023 latest available in current export | Public CSV |
+```bash
+python scripts/rebuild_gold_dashboard.py
+python scripts/export_static.py
+```
 
-IMF aggregate partner groups (e.g. `G001`, `W00`) are excluded from all
-partner panels. Only named country counterparts appear in the dashboard.
-World Bank Data360 remains in the repo as a reachability and Delta
-time-travel demonstration, but it is not a dashboard source.
-
----
-
-## Countries covered
-
-**CEMAC (6):** Cameroon, Central African Republic, Chad, Congo, Equatorial Guinea, Gabon
-
-**ECOWAS (15):** Benin, Burkina Faso, Cabo Verde, Côte d'Ivoire, Gambia, Ghana, Guinea, Guinea-Bissau, Liberia, Mali, Niger, Nigeria, Senegal, Sierra Leone, Togo
-
-**AES (3, subset of ECOWAS):** Mali, Burkina Faso, Niger
-
----
-
-## Repository structure
+## Repository Map
 
 ```text
 .
-├── 00_setup_catalog.ipynb              Unity Catalog and schema initialisation
-├── 01_network_test.ipynb               API reachability checks from Databricks
-├── 02_bronze_data360_first_pull.ipynb  World Bank Data360 → bronze.data360_raw
-├── 03_bronze_comtrade_extract.ipynb    UN Comtrade HS6/W00 → bronze.comtrade_hs6_raw
-├── 04_bronze_imts_extract.ipynb        IMF IMTS bilateral trade → bronze.imts_raw
-├── 05_bronze_acled_extract.ipynb       ACLED events → bronze.acled_*
-├── 06_bronze_imf_weo_extract.ipynb     IMF WEO → bronze.imf_weo_raw
-├── 07_bronze_fsi_extract.ipynb         FSI scores → bronze.fsi_raw
-├── 08_silver_country_dimensions.ipynb  silver.dim_country, silver.dim_bloc_membership
-├── 09_silver_macro_annual.ipynb        silver.fact_macro_annual
-├── 10_silver_trade_partner_annual.ipynb silver.fact_trade_partner_annual, silver.trade_partner_concentration_annual
-├── 10b_silver_comtrade_normalize.ipynb silver.comtrade_partner_annual + bilateral coverage
-├── 11_silver_acled_conflict.ipynb      silver.fact_acled_events/weekly/country_year
-├── 12_silver_fsi_annual.ipynb          silver.fact_fsi_annual
-├── 13_audit_cross_source_coverage.ipynb Cross-source coverage and quality audit
-├── 14_gold_dashboard_core_marts.ipynb  gold.country_year/latest, gold.bloc_year/latest
-├── 15_gold_dashboard_panel_marts.ipynb gold.dashboard_* (five panel marts)
-│
-├── scripts/
-│   ├── databricks_sql.py               Databricks SQL Statement API helper
-│   ├── export_static.py                Queries gold tables → static/data/*.json
-│   ├── audit_dashboard_data.py         Static export and gold-table integrity audit
-│   ├── load_comtrade_silver.py         Local W00 product HS2 recovery path
-│   ├── load_weo_silver.py              Local WEO recovery path
-│   ├── rebuild_gold_dashboard.py       One-time Databricks notebook rebuild helper
-│   └── validate_dashboard_contract.py  Validates row counts and schema
-│
-├── static/                             GitHub Pages build target
-│   ├── index.html                      Dashboard shell (static version)
-│   ├── css/styles.css                  Dashboard styling
-│   ├── js/charts.js                    Chart drawing helpers
-│   ├── js/app_static.js                Client-side rendering (reads local JSON)
-│   └── data/                           Exported JSON files (committed for local preview, refreshed by CI)
-│
-├── extraction/                         Local extraction fallback scripts
+├── 00_setup_catalog.ipynb
+├── 01_network_test.ipynb
+├── 02_bronze_data360_first_pull.ipynb
+├── 03_bronze_comtrade_extract.ipynb
+├── 04_bronze_imts_extract.ipynb
+├── 05_bronze_acled_extract.ipynb
+├── 06_bronze_imf_weo_extract.ipynb
+├── 07_bronze_fsi_extract.ipynb
+├── 08_silver_country_dimensions.ipynb
+├── 09_silver_macro_annual.ipynb
+├── 10_silver_trade_partner_annual.ipynb
+├── 10b_silver_comtrade_normalize.ipynb
+├── 11_silver_acled_conflict.ipynb
+├── 12_silver_fsi_annual.ipynb
+├── 13_audit_cross_source_coverage.ipynb
+├── 14_gold_dashboard_core_marts.ipynb
+├── 15_gold_dashboard_panel_marts.ipynb
+├── docs/
+│   ├── dashboard_data_audit.md
+│   └── decisions/
+│       ├── ADR-001-extraction-architecture.md
+│       ├── ADR-002-bilateral-trade-source.md
+│       └── ADR-003-comtrade-product-structure.md
+├── extraction/
+│   ├── README.md
 │   └── extract/
 │       ├── acled_extract.py
+│       ├── comtrade_extract.py
 │       ├── fsi_extract.py
 │       ├── imf_dots_extract.py
-│       └── imf_weo_extract.py
-│
-├── data/raw/                           Local raw data landing zone
-│   ├── acled/
-│   ├── comtrade/
-│   ├── imts/
-│   ├── weo/
-│   └── fsi/
-│
-├── docs/decisions/
-│   ├── ADR-001-extraction-architecture.md
-│   ├── ADR-002-bilateral-trade-source.md
-│   └── ADR-003-comtrade-product-structure.md
-│
-├── .github/workflows/deploy-pages.yml  CI/CD: export + deploy to GitHub Pages
-├── databricks.yml                      Databricks Asset Bundle config
+│       ├── imf_weo_extract.py
+│       └── tradingeconomics_trade_page_extract.py
+├── scripts/
+│   ├── _dbx_config.py
+│   ├── audit_dashboard_data.py
+│   ├── databricks_sql.py
+│   ├── export_static.py
+│   ├── load_comtrade_silver.py
+│   ├── load_weo_silver.py
+│   ├── rebuild_gold_dashboard.py
+│   └── validate_dashboard_contract.py
+├── static/
+│   ├── index.html
+│   ├── css/styles.css
+│   ├── js/app_static.js
+│   ├── js/charts.js
+│   └── data/*.json
+├── .github/workflows/deploy-pages.yml
+├── databricks.yml
 └── requirements.txt
 ```
 
----
-
-## Local development
-
-Clone the repo and activate the virtual environment:
+## Validation Commands
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+node --check static/js/charts.js
+node --check static/js/app_static.js
+python -m py_compile scripts/databricks_sql.py scripts/export_static.py scripts/audit_dashboard_data.py scripts/validate_dashboard_contract.py
+python scripts/audit_dashboard_data.py --check-only
 ```
 
-To preview the committed static export, serve the static directory:
-
-```bash
-python -m http.server 8080 --directory static
-# open http://localhost:8080
-```
-
-To refresh the dashboard locally against live Databricks data, export the
-gold tables to JSON first:
-
-```bash
-export DATABRICKS_HOST="dbc-xxxx.cloud.databricks.com"
-export DATABRICKS_HTTP_PATH="/sql/1.0/warehouses/xxxx"
-export DATABRICKS_TOKEN="..."
-export DATABRICKS_CATALOG="cemac_ecowas_aes_trade"   # optional, this is the default
-
-python scripts/export_static.py
-python -m http.server 8080 --directory static
-# open http://localhost:8080
-```
-
----
+`scripts/validate_dashboard_contract.py` also checks live Databricks row counts
+and the Nigeria GDP scale anchor when credentials are present.
 
 ## Author
 
-Nathan Thomas Gatse · International Business and Data Science, Protection &
-Security · Thomas More University of Applied Sciences, Belgium.
+Nathan Thomas Gatse - International Business and Data Science, Protection &
+Security - Thomas More University of Applied Sciences, Belgium.
 
 This is the second project in a planned series of African regional data
-infrastructure work. The first project, focused on digital readiness
-indicators across CEMAC, demonstrated a relational data pipeline. This
-project extends into lakehouse architecture with multi-source reconciliation,
-a medallion Delta Lake pipeline, and a fully static public dashboard.
+infrastructure work. The first project focused on digital readiness indicators
+across CEMAC. This project extends that work into a lakehouse architecture with
+multi-source reconciliation, analytical bloc membership, and a static public
+dashboard.
