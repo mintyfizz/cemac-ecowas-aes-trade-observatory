@@ -65,29 +65,37 @@ const DB = {
 
 async function loadData() {
   const base = document.baseURI.replace(/[^/]*$/, "");
-  [
-    DB.timeseries,
-    DB.partners,
-    DB.conflict,
-    DB.fragility,
-    DB.bloc,
-    DB.products,
-  ] = await Promise.all([
-    fetch(base + "data/country_timeseries.json").then(r => r.json()),
-    fetch(base + "data/top_trade_partners.json").then(r => r.json()),
-    fetch(base + "data/conflict_hotspots.json").then(r => r.json()),
-    fetch(base + "data/fragility_components.json").then(r => r.json()),
-    fetch(base + "data/bloc_comparison.json").then(r => r.json()),
-    fetch(base + "data/product_trade_hs2.json").then(r => r.json()),
-  ]);
+  const files = {
+    timeseries: "country_timeseries.json",
+    partners:   "top_trade_partners.json",
+    conflict:   "conflict_hotspots.json",
+    fragility:  "fragility_components.json",
+    bloc:       "bloc_comparison.json",
+    products:   "product_trade_hs2.json",
+  };
 
-  // Coerce numeric strings that Databricks may serialise as strings.
-  for (const r of DB.timeseries) coerceNums(r);
-  for (const r of DB.partners)   coerceNums(r);
-  for (const r of DB.conflict)   coerceNums(r);
-  for (const r of DB.fragility)  coerceNums(r);
-  for (const r of DB.bloc)       coerceNums(r);
-  for (const r of DB.products)   coerceNums(r);
+  const entries = await Promise.all(
+    Object.entries(files).map(async ([key, file]) => {
+      const url = base + "data/" + file;
+      let res;
+      try {
+        res = await fetch(url);
+      } catch (err) {
+        throw new Error(`Could not reach ${file} (${err.message})`);
+      }
+      if (!res.ok) throw new Error(`Failed to load ${file}: HTTP ${res.status}`);
+      try {
+        return [key, await res.json()];
+      } catch {
+        throw new Error(`${file} is not valid JSON`);
+      }
+    }),
+  );
+
+  for (const [key, data] of entries) {
+    DB[key] = Array.isArray(data) ? data : [];
+    for (const r of DB[key]) coerceNums(r);
+  }
 }
 
 const NUM_KEYS = new Set([
@@ -691,16 +699,26 @@ function localGrowth(bloc, country, year) {
 }
 
 // Operational context for bloc=B and year=Y, optional country=C.
+//
+// Conflict + fragility are "latest window" / "latest available" snapshots, so
+// they resolve scope from the current BLOCS map, not each row's
+// analytical_bloc_code. ACLED/FSI rows are tagged with the time-aware
+// historical bloc, so AES members carry an ECOWAS tag on pre-split rows.
+// Time-series panels keep using historical tags.
 function localOperational(bloc, year, country) {
   const isCountry = !!country;
+  const members = isCountry ? null : new Set(BLOCS[bloc] || []);
+  const inScope = (r) => isCountry ? r.country_iso3 === country : members.has(r.country_iso3);
+  const scopeBloc = (r) => isCountry ? r.analytical_bloc_code : bloc;
+
   const conflict = isCountry
     ? DB.conflict
-        .filter(r => r.country_iso3 === country)
+        .filter(inScope)
         .sort((a, z) => (a.hotspot_rank ?? 999) - (z.hotspot_rank ?? 999))
         .map(r => ({
           country_iso3: r.country_iso3,
           country_name: r.country_name,
-          analytical_bloc_code: r.analytical_bloc_code,
+          analytical_bloc_code: scopeBloc(r),
           admin1: r.admin1,
           window_start_year: r.window_start_year,
           window_end_year: r.window_end_year,
@@ -709,14 +727,14 @@ function localOperational(bloc, year, country) {
           fatalities_per_million: r.fatalities_per_million,
         }))
     : Object.values(DB.conflict
-        .filter(r => r.analytical_bloc_code === bloc)
+        .filter(inScope)
         .reduce((acc, r) => {
           const key = r.country_iso3;
           if (!acc[key]) {
             acc[key] = {
               country_iso3: r.country_iso3,
               country_name: r.country_name,
-              analytical_bloc_code: r.analytical_bloc_code,
+              analytical_bloc_code: bloc,
               admin1: null,
               window_start_year: r.window_start_year,
               window_end_year: r.window_end_year,
@@ -733,19 +751,13 @@ function localOperational(bloc, year, country) {
         }, {}))
         .sort((a, z) => (z.violent_events ?? 0) - (a.violent_events ?? 0) || (z.fatalities ?? 0) - (a.fatalities ?? 0) || a.country_name.localeCompare(z.country_name));
 
-  let fragilityRows = DB.fragility
-    .filter(r => isCountry ? r.country_iso3 === country : r.analytical_bloc_code === bloc);
-  if (!isCountry && fragilityRows.length === 0) {
-    const members = new Set(BLOCS[bloc] || []);
-    fragilityRows = DB.fragility.filter(r => members.has(r.country_iso3));
-  }
-
-  const fragility = fragilityRows
+  const fragility = DB.fragility
+    .filter(inScope)
     .sort((a, z) => (z.fsi_total_score ?? 0) - (a.fsi_total_score ?? 0))
     .map(r => ({
       country_iso3: r.country_iso3,
       country_name: r.country_name,
-      analytical_bloc_code: isCountry ? r.analytical_bloc_code : bloc,
+      analytical_bloc_code: scopeBloc(r),
       fsi_total_score: r.fsi_total_score,
       cohesion_score: r.cohesion_score,
       economic_score: r.economic_score,
@@ -936,7 +948,9 @@ function econ(id, label, value, desc) {
 
 function updateToolbarActive() {
   document.querySelectorAll(".bloc-btn").forEach(btn => {
-    btn.classList.toggle("active", btn.dataset.bloc === State.bloc);
+    const active = btn.dataset.bloc === State.bloc;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-selected", active ? "true" : "false");
   });
 }
 
@@ -1083,7 +1097,7 @@ async function loadMap(version) {
   if (!isFresh(version)) return;
   State.mapRows = rows;
   setMapTitle();
-  await renderMap(rows, State, METRIC_META[State.mapMetric] || METRIC_META.trade_openness);
+  await renderMap(rows, State, METRIC_META[State.mapMetric] || METRIC_META.trade_openness, version);
 }
 
 async function loadPartners(version) {
@@ -1255,7 +1269,7 @@ function attachListeners() {
 
   document.getElementById("metric-select").addEventListener("change", event => {
     State.mapMetric = event.target.value;
-    loadMap(++State.loadVersion);
+    loadMap(State.loadVersion);
   });
 
   document.getElementById("flow-toggle")?.addEventListener("click", event => {

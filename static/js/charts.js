@@ -93,6 +93,7 @@ function canvas(id) {
   const el = document.getElementById(id);
   if (!el) return null;
   destroyChart(id);
+  el.parentElement?.querySelectorAll(".empty-state").forEach(node => node.remove());
   return el;
 }
 
@@ -157,7 +158,9 @@ function chartEmpty(id, msg) {
   const el = document.getElementById(id);
   if (!el) return;
   const parent = el.parentElement;
-  if (parent) parent.insertAdjacentHTML("beforeend", `<div class="empty-state">${escapeHTML(msg)}</div>`);
+  if (!parent) return;
+  parent.querySelectorAll(".empty-state").forEach(node => node.remove());
+  parent.insertAdjacentHTML("beforeend", `<div class="empty-state">${escapeHTML(msg)}</div>`);
 }
 
 function escapeHTML(value) {
@@ -231,9 +234,10 @@ function loadWorld() {
   return worldPromise;
 }
 
-async function renderMap(rows, state, metricMeta) {
+async function renderMap(rows, state, metricMeta, version) {
   const svg = d3.select("#map-svg");
   const tooltip = d3.select("#map-tooltip");
+  tooltip.style("opacity", 0);
   svg.selectAll("*").remove();
 
   if (!rows || !rows.length) {
@@ -247,6 +251,7 @@ async function renderMap(rows, state, metricMeta) {
   }
 
   const world = await loadWorld();
+  if (version != null && version !== state.loadVersion) return;
   const rowByIso = new Map(rows.map(row => [row.country_iso3, row]));
   const targetIds = new Set(Object.keys(COUNTRY_NUMERIC_TO_ISO));
 
@@ -684,7 +689,6 @@ function renderIntegration(rows, state) {
 function renderGrowth(rows, state) {
   const ctx = canvas("growth-chart");
   if (!ctx) return;
-  ctx.parentElement?.querySelectorAll(".empty-state").forEach(node => node.remove());
   if (!rows || !rows.length) return chartEmpty("growth-chart", "No growth data.");
 
   const years = [...new Set(rows.map(row => row.year))].sort((a, b) => a - b);
@@ -799,7 +803,6 @@ function renderStructureTree(overview) {
   const ctx = canvas("exposure-chart");
   const note = document.getElementById("exposure-note");
   if (!ctx) return;
-  ctx.parentElement?.querySelectorAll(".empty-state").forEach(node => node.remove());
 
   const exportVal = numericOrNull(overview.exports_billions_usd);
   const importVal = numericOrNull(overview.imports_billions_usd);

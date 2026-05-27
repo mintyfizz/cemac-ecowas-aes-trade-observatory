@@ -13,9 +13,9 @@
   <main class="dashboard-shell">
     <header class="toolbar">
       <div class="bloc-tabs" id="bloc-tabs" role="tablist" aria-label="Bloc">
-        <button class="bloc-btn active" type="button" data-bloc="CEMAC">CEMAC</button>
-        <button class="bloc-btn" type="button" data-bloc="ECOWAS">ECOWAS</button>
-        <button class="bloc-btn" type="button" data-bloc="AES">AES <span class="badge-new">recent</span></button>
+        <button class="bloc-btn active" type="button" role="tab" aria-selected="true" data-bloc="CEMAC">CEMAC</button>
+        <button class="bloc-btn" type="button" role="tab" aria-selected="false" data-bloc="ECOWAS">ECOWAS</button>
+        <button class="bloc-btn" type="button" role="tab" aria-selected="false" data-bloc="AES">AES <span class="badge-new">recent</span></button>
       </div>
 
       <div class="ctrls">
@@ -160,7 +160,7 @@
 
         <div class="chart-box">
           <h3>Fragility components</h3>
-          <p class="sub"><abbr title="Fund for Peace Fragility States Index: 0 = most stable, 120 = most fragile">FSI</abbr> · pillar scores, latest available</p>
+          <p class="sub"><abbr title="Fund for Peace Fragile States Index: 0 = most stable, 120 = most fragile">FSI</abbr> · pillar scores, latest available</p>
           <canvas id="fragility-chart"></canvas>
         </div>
 
@@ -186,7 +186,7 @@
 
   <div class="toast" id="toast" role="alert" aria-live="assertive"></div>
 
-  <script src="js/charts.js?v=20260523-prepublish-v3"></script>
-  <script src="js/app_static.js?v=20260523-prepublish-v3"></script>
+  <script src="js/charts.js?v=20260527-interaction-fixes"></script>
+  <script src="js/app_static.js?v=20260527-interaction-fixes"></script>
 </body>
 </html>
