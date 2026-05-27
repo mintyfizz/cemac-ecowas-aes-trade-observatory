@@ -7,4 +7,3 @@ __pycache__/
 app/.streamlit/secrets.toml
 
 .databricks
-.vercel
