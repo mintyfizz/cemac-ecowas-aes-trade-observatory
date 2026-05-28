@@ -283,6 +283,10 @@ and the Nigeria GDP scale anchor when credentials are present.
 
 This project is released under the [MIT License](LICENSE).
 
+The MIT License applies to original code, notebooks, scripts, and
+documentation in this repository. Data files and derived datasets remain
+subject to the terms of their original providers.
+
 ## Author
 
 Nathan Thomas Gatse - International Business and Data Science, Protection &
