@@ -1,1334 +1,631 @@
 /**
- * Static dashboard – GitHub Pages build.
+ * CEMAC-ECOWAS-AES Trade Observatory: static dashboard controller.
  *
- * Rendering logic backed by pre-exported JSON files in data/. No server
- * or runtime API is needed.
- *
- * Data files (written by scripts/export_static.py):
- *   data/country_timeseries.json
- *   data/top_trade_partners.json
- *   data/conflict_hotspots.json
- *   data/fragility_components.json
- *   data/bloc_comparison.json
- *   data/product_trade_hs2.json
+ * Reads pre-computed JSON from data/ (built by scripts/offline_rebuild.py and
+ * checked by scripts/check_static_contract.py). This file selects and labels
+ * values; it does not aggregate, rescale or fill gaps. Missing values stay
+ * missing and are shown as "--" with a reason where one is known.
  */
 
 "use strict";
 
-// ---------------------------------------------------------------------------
-// Constants for the static GitHub Pages dashboard.
-// ---------------------------------------------------------------------------
-
-const BLOCS = {
-  CEMAC:  ["CMR", "CAF", "TCD", "COG", "GNQ", "GAB"],
-  ECOWAS: ["BEN", "CPV", "CIV", "GMB", "GHA", "GIN", "GNB",
-           "LBR", "NGA", "SEN", "SLE", "TGO"],
-  AES:    ["MLI", "BFA", "NER"],
+const BLOCS = ["CEMAC", "ECOWAS", "AES"];
+const BLOC_LABEL = {
+  CEMAC: "CEMAC",
+  ECOWAS: "ECOWAS",
+  AES: "AES (analytical cohort)",
+};
+const AES_MEMBERS = ["BFA", "MLI", "NER"];
+const CURRENT_BLOC = {
+  CMR: "CEMAC", CAF: "CEMAC", TCD: "CEMAC", COG: "CEMAC", GNQ: "CEMAC", GAB: "CEMAC",
+  BEN: "ECOWAS", CPV: "ECOWAS", CIV: "ECOWAS", GMB: "ECOWAS", GHA: "ECOWAS", GIN: "ECOWAS",
+  GNB: "ECOWAS", LBR: "ECOWAS", NGA: "ECOWAS", SEN: "ECOWAS", SLE: "ECOWAS", TGO: "ECOWAS",
+  BFA: "AES", MLI: "AES", NER: "AES",
 };
 
-const PRODUCT_REPORTER_COVERAGE_THRESHOLD = 0.5;
-const PRODUCT_VALUE_COVERAGE_THRESHOLD = 0.5;
-
-const COUNTRY_NAMES = {
-  CMR: "Cameroon", CAF: "Central African Republic", TCD: "Chad",
-  COG: "Congo", GNQ: "Equatorial Guinea", GAB: "Gabon",
-  BEN: "Benin", BFA: "Burkina Faso", CPV: "Cabo Verde",
-  CIV: "Côte d'Ivoire", GMB: "Gambia", GHA: "Ghana",
-  GIN: "Guinea", GNB: "Guinea-Bissau", LBR: "Liberia",
-  MLI: "Mali", NER: "Niger", NGA: "Nigeria",
-  SEN: "Senegal", SLE: "Sierra Leone", TGO: "Togo",
+const MAP_METRICS = {
+  openness: { label: "Trade openness (% of GDP)", col: "trade_openness_pct_gdp", format: v => fmtPct(v, 0) },
+  trade: { label: "Goods trade (USD B, IMF World)", col: "total_trade_billions_usd", format: v => shortMoneyB(v) },
+  top_partner: { label: "Top partner share of trade", col: "top_partner_share_of_world_pct", format: v => fmtPct(v, 1) },
+  hhi: { label: "Partner concentration (HHI)", col: "total_trade_partner_hhi", format: v => fmtPlain(v, 3) },
+  gdp: { label: "GDP (USD B)", col: "gdp_current_usd_billions", format: v => shortMoneyB(v) },
+  fatalities_pm: { label: "Conflict fatalities per million", col: "fatalities_per_million", format: v => fmtPlain(v, 1) },
+  fsi: { label: "FSI total (this edition year only)", col: "fsi_total_score", format: v => fmtPlain(v, 1) },
 };
 
-const MAP_METRIC_COLS = {
-  total_trade:    "total_trade_billions_usd",
-  trade_openness: "trade_openness_pct_gdp",
-  hhi:            "total_trade_partner_hhi",
-  gdp:            "gdp_current_usd_billions",
-  fragility:      "fsi_total_score",
-  conflict:       "fatalities_per_million",
-};
-
-const ISO3_RE = /^[A-Z]{3}$/;
+const DB = {};
+const IDX = { ct: {}, bloc: {}, partners: {}, blocPartners: {}, hot: {}, frag: {} };
+const State = { bloc: "CEMAC", year: 2024, country: null, mapMetric: "openness", loadVersion: 0 };
+let YEARS = [];
 
 // ---------------------------------------------------------------------------
-// In-memory database (populated at startup)
+// Data loading and indexing
 // ---------------------------------------------------------------------------
-
-const DB = {
-  timeseries: [],   // dashboard_country_timeseries
-  partners:   [],   // dashboard_top_trade_partners
-  conflict:   [],   // dashboard_conflict_hotspots
-  fragility:  [],   // dashboard_fragility_components
-  bloc:       [],   // dashboard_bloc_comparison
-  products:   [],   // product_trade_hs2
-};
+async function fetchJSON(name) {
+  const res = await fetch(`data/${name}`);
+  if (!res.ok) throw new Error(`${name}: HTTP ${res.status}`);
+  return res.json();
+}
 
 async function loadData() {
-  const base = document.baseURI.replace(/[^/]*$/, "");
-  const files = {
-    timeseries: "country_timeseries.json",
-    partners:   "top_trade_partners.json",
-    conflict:   "conflict_hotspots.json",
-    fragility:  "fragility_components.json",
-    bloc:       "bloc_comparison.json",
-    products:   "product_trade_hs2.json",
+  const names = {
+    ct: "country_timeseries.json",
+    bloc: "bloc_comparison.json",
+    partners: "top_trade_partners.json",
+    blocPartners: "bloc_trade_partners.json",
+    hot: "conflict_hotspots.json",
+    frag: "fragility_components.json",
+    products: "product_trade_hs2.json",
+    prov: "provenance.json",
   };
+  const entries = await Promise.all(Object.entries(names).map(async ([k, n]) => [k, await fetchJSON(n)]));
+  Object.assign(DB, Object.fromEntries(entries));
 
-  const entries = await Promise.all(
-    Object.entries(files).map(async ([key, file]) => {
-      const url = base + "data/" + file;
-      let res;
-      try {
-        res = await fetch(url);
-      } catch (err) {
-        throw new Error(`Could not reach ${file} (${err.message})`);
-      }
-      if (!res.ok) throw new Error(`Failed to load ${file}: HTTP ${res.status}`);
-      try {
-        return [key, await res.json()];
-      } catch {
-        throw new Error(`${file} is not valid JSON`);
-      }
-    }),
-  );
-
-  for (const [key, data] of entries) {
-    DB[key] = Array.isArray(data) ? data : [];
-    for (const r of DB[key]) coerceNums(r);
+  for (const r of DB.ct) (IDX.ct[r.country_iso3] ||= {})[r.year] = r;
+  for (const r of DB.bloc) (IDX.bloc[r.analytical_bloc_code] ||= {})[r.year] = r;
+  for (const r of DB.partners) (IDX.partners[`${r.country_iso3}|${r.year}`] ||= []).push(r);
+  for (const r of DB.blocPartners) (IDX.blocPartners[`${r.analytical_bloc_code}|${r.year}`] ||= []).push(r);
+  for (const list of [...Object.values(IDX.partners), ...Object.values(IDX.blocPartners)]) {
+    list.sort((a, z) => a.partner_rank - z.partner_rank);
   }
-}
-
-const NUM_KEYS = new Set([
-  "year", "total_trade_billions_usd", "exports_billions_usd", "imports_billions_usd",
-  "trade_balance_billions_usd", "trade_openness_pct_gdp", "exports_pct_gdp", "imports_pct_gdp",
-  "gdp_current_usd_billions", "gdp_per_capita_current_usd", "population_millions",
-  "real_gdp_growth_pct_imf", "inflation_cpi_pct", "gross_debt_pct_gdp_imf",
-  "net_lending_borrowing_pct_gdp_imf", "current_account_balance_pct_gdp_imf",
-  "total_trade_partner_hhi", "violent_events", "fatalities",
-  "violent_events_per_million", "fatalities_per_million", "fsi_total_score",
-  "total_trade_partner_share_pct", "partner_rank", "hotspot_rank",
-  "fsi_year", "window_start_year", "window_end_year",
-  "cohesion_score", "economic_score", "political_score", "social_cross_cutting_score",
-  "share_pct", "index_value",
-  "trade_value_billions_usd", "trade_value_usd", "reporter_year_flow_total_usd",
-  "hs2_share_pct", "n_reporters",
-]);
-
-function coerceNums(row) {
-  for (const key of Object.keys(row)) {
-    if (NUM_KEYS.has(key) && row[key] !== null && row[key] !== undefined) {
-      const n = Number(row[key]);
-      row[key] = Number.isFinite(n) ? n : null;
-    }
-  }
+  for (const r of DB.hot) (IDX.hot[r.country_iso3] ||= []).push(r);
+  for (const list of Object.values(IDX.hot)) list.sort((a, z) => a.hotspot_rank - z.hotspot_rank);
+  for (const r of DB.frag) IDX.frag[r.country_iso3] = r;
+  YEARS = [...new Set(DB.ct.map(r => r.year))].sort((a, z) => a - z);
 }
 
 // ---------------------------------------------------------------------------
-// Local query helpers over the exported JSON datasets.
+// Formatting helpers
 // ---------------------------------------------------------------------------
-
-function localMeta() {
-  return {
-    blocs: BLOCS,
-    country_names: COUNTRY_NAMES,
-    years: Array.from({ length: 35 }, (_, i) => 2024 - i),
-    map_metrics: [
-      { value: "trade_openness", label: "Trade openness (% GDP)" },
-      { value: "hhi",            label: "Partner concentration (HHI)" },
-      { value: "total_trade",    label: "Total trade (USD B)" },
-      { value: "gdp",            label: "GDP (USD B)" },
-      { value: "fragility",      label: "Fragility score" },
-      { value: "conflict",       label: "Fatalities per million" },
-    ],
-  };
+function countryName(iso) {
+  return IDX.ct[iso]?.[YEARS[YEARS.length - 1]]?.country_name || ISO3_NAMES[iso] || iso;
 }
 
-// Map rows for metric=M and year=Y.
-function localMap(metric, year) {
-  const col = MAP_METRIC_COLS[metric] || "trade_openness_pct_gdp";
-  return DB.timeseries
-    .filter(r => r.year === year)
-    .map(r => ({
-      country_iso3: r.country_iso3,
-      country_name: r.country_name,
-      analytical_bloc_code: r.analytical_bloc_code,
-      value: r[col] ?? null,
-    }));
+function blocOf(iso, year) {
+  return IDX.ct[iso]?.[year]?.analytical_bloc_code || null;
 }
 
-function analyticalScopeRows(bloc, year) {
-  return DB.timeseries.filter(r => r.analytical_bloc_code === bloc && r.year === year);
+function membersOf(bloc, year) {
+  return IDX.bloc[bloc]?.[year]?.members || [];
 }
 
-function analyticalScopeMembers(bloc, year) {
-  return new Set(analyticalScopeRows(bloc, year).map(r => r.country_iso3));
+function scopeName() {
+  return State.country ? countryName(State.country) : BLOC_LABEL[State.bloc];
 }
 
-function memberSetKey(bloc, year) {
-  return [...analyticalScopeMembers(bloc, year)].sort().join("|");
+function fmtUsdPc(v) {
+  return v == null ? "--" : `$${fmtNumber(v, 0)}`;
 }
 
-function comparablePreviousOverview(bloc, year, country) {
-  if (year <= 1990) return null;
-  if (country) return localOverview(bloc, year - 1, country);
-
-  const currentMembers = memberSetKey(bloc, year);
-  const previousMembers = memberSetKey(bloc, year - 1);
-  if (!currentMembers || currentMembers !== previousMembers) return null;
-  return localOverview(bloc, year - 1, null);
+function reportingChip(n, m) {
+  if (m == null || n == null) return "";
+  if (n === m) return `<span class="chip ok">${n}/${m} countries</span>`;
+  return `<span class="chip warn" title="Not all members report this value; the figure covers reporting members only">${n}/${m} countries</span>`;
 }
 
-function latestAnalyticalYear(bloc) {
-  const years = DB.timeseries
-    .filter(r => r.analytical_bloc_code === bloc)
-    .map(r => r.year)
-    .filter(Number.isFinite);
-  return years.length ? Math.max(...years) : null;
-}
-
-// Overview for bloc=B and year=Y, optionally drilled into country=C.
-function localOverview(bloc, year, country) {
-  if (country) {
-    const b = DB.timeseries.find(r => r.country_iso3 === country && r.year === year) || {};
-    const validPartners = DB.partners
-      .filter(r => r.country_iso3 === country && r.year === year && ISO3_RE.test(r.counterpart_iso3))
-      .sort((a, z) => (a.partner_rank ?? 999) - (z.partner_rank ?? 999));
-    const top = validPartners[0] || {};
-    const latestFsi = DB.fragility.find(r => r.country_iso3 === country) || {};
-    const gdp = b.gdp_current_usd_billions || null;
-    const selectedYearFsi = b.fsi_total_score ?? null;
-    const fallbackFsi = selectedYearFsi == null ? (latestFsi.fsi_total_score ?? null) : null;
-    return {
-      total_trade_billions_usd: b.total_trade_billions_usd ?? null,
-      exports_billions_usd: b.exports_billions_usd ?? null,
-      imports_billions_usd: b.imports_billions_usd ?? null,
-      hhi: b.total_trade_partner_hhi ?? null,
-      main_partner_iso3: top.counterpart_iso3 ?? null,
-      main_partner_name: top.counterpart_name ?? null,
-      main_partner_trade_billions_usd: top.total_trade_billions_usd ?? null,
-      top_partner_share_pct: (top.total_trade_billions_usd != null && b.total_trade_billions_usd)
-        ? top.total_trade_billions_usd / b.total_trade_billions_usd * 100 : null,
-      gdp_current_usd_billions: gdp,
-      gdp_per_capita_usd: b.gdp_per_capita_current_usd ?? null,
-      population_millions: b.population_millions ?? null,
-      real_gdp_growth_pct: b.real_gdp_growth_pct_imf ?? null,
-      inflation_pct: b.inflation_cpi_pct ?? null,
-      govt_debt_pct_gdp: b.gross_debt_pct_gdp_imf ?? null,
-      fiscal_balance_pct_gdp: b.net_lending_borrowing_pct_gdp_imf ?? null,
-      current_account_pct_gdp: b.current_account_balance_pct_gdp_imf ?? null,
-      trade_balance_billions_usd: b.trade_balance_billions_usd ?? null,
-      violent_events_per_million: b.violent_events_per_million ?? null,
-      fatalities_per_million: b.fatalities_per_million ?? null,
-      fatalities: b.fatalities ?? null,
-      violent_events: b.violent_events ?? null,
-      fragility_band: b.fragility_band ?? null,
-      avg_fsi_score: selectedYearFsi ?? fallbackFsi,
-      fsi_is_latest_available: selectedYearFsi == null && fallbackFsi != null,
-      fsi_year: selectedYearFsi == null ? (latestFsi.fsi_year ?? null) : year,
-      trade_openness_pct_gdp: b.trade_openness_pct_gdp ?? null,
-      exports_pct_gdp: (b.exports_billions_usd != null && gdp) ? b.exports_billions_usd / gdp * 100 : null,
-      imports_pct_gdp: (b.imports_billions_usd != null && gdp) ? b.imports_billions_usd / gdp * 100 : null,
-      year: b.year ?? year,
-    };
-  }
-
-  // Bloc-level aggregate
-  const scoped = DB.timeseries.filter(r => r.analytical_bloc_code === bloc && r.year === year);
-  const fsiMap = Object.fromEntries(DB.fragility.map(r => [r.country_iso3, r.fsi_total_score]));
-
-  const sum = col => {
-    let total = 0;
-    let seen = false;
-    for (const r of scoped) {
-      if (r[col] != null) {
-        total += r[col];
-        seen = true;
-      }
-    }
-    return seen ? total : null;
-  };
-
-  function weightedAvg(col, wCol) {
-    let num = 0, den = 0;
-    for (const r of scoped) {
-      if (r[col] != null && r[wCol] != null) { num += r[col] * r[wCol]; den += r[wCol]; }
-    }
-    return den > 0 ? num / den : null;
-  }
-
-  const validPartners = DB.partners.filter(
-    r => r.analytical_bloc_code === bloc && r.year === year && ISO3_RE.test(r.counterpart_iso3),
-  );
-  const partnerAgg = {};
-  for (const r of validPartners) {
-    if (!partnerAgg[r.counterpart_iso3]) {
-      partnerAgg[r.counterpart_iso3] = { iso3: r.counterpart_iso3, name: r.counterpart_name, total: 0 };
-    }
-    if (r.total_trade_billions_usd != null) {
-      partnerAgg[r.counterpart_iso3].total += r.total_trade_billions_usd;
-    }
-  }
-  const top = Object.values(partnerAgg).sort((a, z) => z.total - a.total)[0] || {};
-
-  const totalTrade = sum("total_trade_billions_usd");
-  const totalExports = sum("exports_billions_usd");
-  const totalImports = sum("imports_billions_usd");
-  const totalGdp   = sum("gdp_current_usd_billions");
-  const totalPop   = sum("population_millions");
-  const totalVE    = sum("violent_events");
-  const totalFat   = sum("fatalities");
-
-  let fsiSum = 0, fsiCount = 0, fsiFallbackCount = 0;
-  const fsiYearMap = Object.fromEntries(DB.fragility.map(r => [r.country_iso3, r.fsi_year]));
-  const fsiYears = [];
-  for (const r of scoped) {
-    const selectedYearFsi = r.fsi_total_score ?? null;
-    const fallbackFsi = selectedYearFsi == null ? fsiMap[r.country_iso3] : null;
-    const v = selectedYearFsi ?? fallbackFsi;
-    if (v != null) {
-      fsiSum += v;
-      fsiCount++;
-      if (selectedYearFsi == null) fsiFallbackCount++;
-      fsiYears.push(selectedYearFsi == null ? fsiYearMap[r.country_iso3] : r.year);
-    }
-  }
-
-  return {
-    total_trade_billions_usd: totalTrade,
-    exports_billions_usd: totalExports,
-    imports_billions_usd: totalImports,
-    hhi: weightedAvg("total_trade_partner_hhi", "total_trade_billions_usd"),
-    main_partner_iso3: top.iso3 ?? null,
-    main_partner_name: top.name ?? null,
-    main_partner_trade_billions_usd: top.total ?? null,
-    top_partner_share_pct: (top.total != null && totalTrade) ? top.total / totalTrade * 100 : null,
-    gdp_current_usd_billions: totalGdp,
-    population_millions: totalPop,
-    gdp_per_capita_usd: (totalGdp != null && totalPop) ? totalGdp / totalPop * 1000 : null,
-    real_gdp_growth_pct: weightedAvg("real_gdp_growth_pct_imf", "gdp_current_usd_billions"),
-    inflation_pct: weightedAvg("inflation_cpi_pct", "gdp_current_usd_billions"),
-    govt_debt_pct_gdp: weightedAvg("gross_debt_pct_gdp_imf", "gdp_current_usd_billions"),
-    fiscal_balance_pct_gdp: weightedAvg("net_lending_borrowing_pct_gdp_imf", "gdp_current_usd_billions"),
-    current_account_pct_gdp: weightedAvg("current_account_balance_pct_gdp_imf", "gdp_current_usd_billions"),
-    trade_balance_billions_usd: sum("trade_balance_billions_usd"),
-    violent_events: totalVE,
-    fatalities: totalFat,
-    violent_events_per_million: (totalVE != null && totalPop) ? totalVE / totalPop : null,
-    fatalities_per_million: (totalFat != null && totalPop) ? totalFat / totalPop : null,
-    fragility_band: null,
-    avg_fsi_score: fsiCount ? fsiSum / fsiCount : null,
-    fsi_is_latest_available: fsiFallbackCount > 0,
-    fsi_year: fsiYears.length ? Math.max(...fsiYears.filter(Number.isFinite)) : null,
-    trade_openness_pct_gdp: (totalTrade != null && totalGdp) ? totalTrade / totalGdp * 100 : null,
-    exports_pct_gdp: (totalExports != null && totalGdp) ? totalExports / totalGdp * 100 : null,
-    imports_pct_gdp: (totalImports != null && totalGdp) ? totalImports / totalGdp * 100 : null,
-    year,
-  };
-}
-
-// Partner rows for bloc=B and year=Y, optionally drilled into country=C.
-function localPartners(bloc, year, country) {
-  if (country) {
-    return DB.partners
-      .filter(r => r.country_iso3 === country && r.year === year && ISO3_RE.test(r.counterpart_iso3))
-      .sort((a, z) => (a.partner_rank ?? 999) - (z.partner_rank ?? 999))
-      .slice(0, 10)
-      .map((r, i) => ({
-        counterpart_iso3: r.counterpart_iso3,
-        counterpart_name: r.counterpart_name,
-        exports_billions_usd: r.exports_billions_usd,
-        imports_billions_usd: r.imports_billions_usd,
-        total_trade_billions_usd: r.total_trade_billions_usd,
-        total_trade_partner_share_pct: r.total_trade_partner_share_pct,
-        partner_rank: i + 1,
-      }));
-  }
-
-  const valid = DB.partners.filter(
-    r => r.analytical_bloc_code === bloc && r.year === year && ISO3_RE.test(r.counterpart_iso3),
-  );
-  const agg = {};
-  for (const r of valid) {
-    if (!agg[r.counterpart_iso3]) {
-      agg[r.counterpart_iso3] = {
-        counterpart_iso3: r.counterpart_iso3,
-        counterpart_name: r.counterpart_name,
-        exports_billions_usd: 0,
-        imports_billions_usd: 0,
-        total_trade_billions_usd: 0,
-      };
-    }
-    const a = agg[r.counterpart_iso3];
-    a.exports_billions_usd += r.exports_billions_usd ?? 0;
-    a.imports_billions_usd += r.imports_billions_usd ?? 0;
-    a.total_trade_billions_usd += r.total_trade_billions_usd ?? 0;
-  }
-  const rows = Object.values(agg).sort((a, z) => z.total_trade_billions_usd - a.total_trade_billions_usd);
-  // Use the timeseries total (all bilateral flows) so shares aren't inflated by
-  // the ISO3-only subset of the top-trade-partners table.
-  const blocTotal = DB.timeseries
-    .filter(r => r.analytical_bloc_code === bloc && r.year === year)
-    .reduce((s, r) => s + (r.total_trade_billions_usd ?? 0), 0);
-  return rows.slice(0, 10).map((r, i) => ({
-    ...r,
-    total_trade_partner_share_pct: blocTotal ? r.total_trade_billions_usd / blocTotal * 100 : null,
-    partner_rank: i + 1,
-  }));
-}
-
-function partnerRowsForScope(bloc, year, country) {
-  if (country) {
-    return DB.partners.filter(r =>
-      r.country_iso3 === country &&
-      r.year === year &&
-      ISO3_RE.test(r.counterpart_iso3)
-    );
-  }
-  return DB.partners.filter(r =>
-    r.analytical_bloc_code === bloc &&
-    r.year === year &&
-    ISO3_RE.test(r.counterpart_iso3)
-  );
-}
-
-function tradeTotalForScope(bloc, year, country) {
-  if (country) {
-    return DB.timeseries.find(r => r.country_iso3 === country && r.year === year)?.total_trade_billions_usd ?? null;
-  }
-  let total = 0;
-  let seen = false;
-  for (const r of DB.timeseries) {
-    if (r.analytical_bloc_code === bloc && r.year === year && r.total_trade_billions_usd != null) {
-      total += r.total_trade_billions_usd;
-      seen = true;
-    }
-  }
-  return seen ? total : null;
-}
-
-function hhiForScope(bloc, year, country) {
-  if (country) {
-    return DB.timeseries.find(r => r.country_iso3 === country && r.year === year)?.total_trade_partner_hhi ?? null;
-  }
-  let num = 0;
-  let den = 0;
-  for (const r of DB.timeseries) {
-    if (r.analytical_bloc_code === bloc && r.year === year && r.total_trade_partner_hhi != null && r.total_trade_billions_usd != null) {
-      num += r.total_trade_partner_hhi * r.total_trade_billions_usd;
-      den += r.total_trade_billions_usd;
-    }
-  }
-  return den ? num / den : null;
-}
-
-function localPartnerDependence(bloc, year, country) {
-  const years = [...new Set(DB.timeseries
-    .filter(r => country ? r.country_iso3 === country : r.analytical_bloc_code === bloc)
-    .map(r => r.year)
-    .filter(Number.isFinite))]
-    .sort((a, b) => a - b);
-
-  const series = years.map(y => {
-    const totalTrade = tradeTotalForScope(bloc, y, country);
-    const agg = {};
-    for (const r of partnerRowsForScope(bloc, y, country)) {
-      if (!agg[r.counterpart_iso3]) {
-        agg[r.counterpart_iso3] = {
-          iso3: r.counterpart_iso3,
-          name: r.counterpart_name,
-          total: 0,
-        };
-      }
-      agg[r.counterpart_iso3].total += r.total_trade_billions_usd ?? 0;
-    }
-    const ranked = Object.values(agg).sort((a, z) => z.total - a.total);
-    const top1 = ranked[0] || null;
-    const top3Total = ranked.slice(0, 3).reduce((sum, row) => sum + (row.total || 0), 0);
-    return {
-      year: y,
-      top_partner_iso3: top1?.iso3 ?? null,
-      top_partner_name: top1?.name ?? top1?.iso3 ?? null,
-      top_partner_trade_billions_usd: top1?.total ?? null,
-      top_partner_share_pct: (top1?.total != null && totalTrade) ? top1.total / totalTrade * 100 : null,
-      top3_share_pct: totalTrade ? top3Total / totalTrade * 100 : null,
-      hhi: hhiForScope(bloc, y, country),
-    };
-  });
-
-  return {
-    current: series.find(row => row.year === year) || null,
-    series,
-  };
-}
-
-// Concentration history for bloc=B and year=Y, optional country=C.
-function localConcentration(bloc, year, country) {
-  let hhi;
-  if (country) {
-    hhi = DB.timeseries
-      .filter(r => r.country_iso3 === country)
-      .sort((a, z) => a.year - z.year)
-      .map(r => ({
-        country_iso3: r.country_iso3,
-        country_name: r.country_name,
-        analytical_bloc_code: r.analytical_bloc_code,
-        hhi: r.total_trade_partner_hhi,
-        year: r.year,
-      }));
+function delta(current, previous, { digits = 1, kind = "pct", suffix = "" } = {}) {
+  if (current == null || previous == null) return "";
+  let d;
+  if (kind === "pct") {
+    if (previous === 0) return "";
+    d = (current - previous) / Math.abs(previous) * 100;
+    suffix = "%";
   } else {
-    // True bloc HHI: aggregate partner trade across current members, then
-    // compute HHI on the bloc's partner-share distribution.
-    //
-    // The static partner export keeps the top 15 partners per reporter, so
-    // long-tail partners are clipped. That biases this result high, but it is
-    // still the correct aggregation grain for a bloc-level HHI.
-    const blocsToShow = ["CEMAC", "ECOWAS", "AES"];
-    const years = [...new Set(DB.partners.map(r => r.year).filter(Number.isFinite))].sort((a, z) => a - z);
-    hhi = [];
-    for (const b of blocsToShow) {
-      const members = new Set(BLOCS[b] || []);
-      for (const y of years) {
-        const partnerTotals = {};
-        let total = 0;
-        for (const r of DB.partners) {
-          if (r.year !== y) continue;
-          if (!members.has(r.country_iso3)) continue;
-          if (!ISO3_RE.test(r.counterpart_iso3)) continue;
-          const v = r.total_trade_billions_usd ?? 0;
-          partnerTotals[r.counterpart_iso3] = (partnerTotals[r.counterpart_iso3] ?? 0) + v;
-          total += v;
-        }
-        let h = null;
-        if (total > 0) {
-          h = 0;
-          for (const v of Object.values(partnerTotals)) {
-            const s = v / total;
-            h += s * s;
-          }
-        }
-        hhi.push({ year: y, analytical_bloc_code: b, hhi: h });
-      }
-    }
+    d = current - previous;
   }
-
-  const intra = DB.bloc
-    .sort((a, z) => a.year - z.year)
-    .map(r => ({
-      year: r.year,
-      analytical_bloc_code: r.analytical_bloc_code,
-      openness_pct_gdp: r.trade_openness_pct_gdp,
-    }));
-
-  return { hhi, intra };
+  const cls = Math.abs(d) < 1e-9 ? "flat" : d > 0 ? "up" : "down";
+  const arrow = cls === "up" ? "▲" : cls === "down" ? "▼" : "•";
+  return `<span class="delta-badge ${cls}">${arrow} ${Math.abs(d).toFixed(digits)}${suffix}</span>`;
 }
 
-// Product-sector structure for bloc=B, year=Y, flow=F, optional country=C.
-function localProducts(bloc, year, country, flow) {
-  const selectedFlow = flow === "import" ? "import" : "export";
-
-  if (country) {
-    const rows = DB.products
-      .filter(r => (
-        r.reporter_iso3 === country &&
-        r.year === year &&
-        r.flow_type === selectedFlow &&
-        r.trade_value_billions_usd != null
-      ))
-      .sort((a, z) => (z.trade_value_billions_usd ?? -1) - (a.trade_value_billions_usd ?? -1))
-      .slice(0, 15)
-      .map(r => ({
-        hs2_code: r.hs2_code,
-        hs2_description: r.hs2_description,
-        trade_value_billions_usd: r.trade_value_billions_usd,
-        hs2_share_pct: r.hs2_share_pct,
-      }));
-
-    if (!rows.length) {
-      const years = DB.products
-        .filter(r => r.reporter_iso3 === country && r.flow_type === selectedFlow)
-        .map(r => r.year)
-        .filter(Number.isFinite);
-      const latestYear = years.length ? Math.max(...years) : null;
-      return {
-        available: false,
-        coverage_note: `No Comtrade product data for ${country} · ${year}`,
-        message: `No selected-year HS2 product coverage for ${countryName(country)}. Latest available ${selectedFlow} year is ${latestYear ?? "--"}.`,
-        scope_type: "country",
-        rows: [],
-        latest_year: latestYear,
-      };
-    }
-
-    return {
-      available: true,
-      coverage_note: `UN Comtrade · ${countryName(country)} · ${year} · reported HS2 ${selectedFlow}s`,
-      data_year: year,
-      coverage_detail: "Country view uses reporter-submitted HS2 rows for the selected year.",
-      scope_type: "country",
-      rows,
-    };
-  }
-
-  const members = analyticalScopeMembers(bloc, year);
-  if (!members.size) {
-    return {
-      available: false,
-      coverage_note: `No ${bloc} analytical membership coverage · ${year}`,
-      message: `${bloc} is only available where the analytical split exists. Latest available split year is ${latestAnalyticalYear(bloc) ?? "--"}.`,
-      scope_type: "bloc",
-      rows: [],
-      latest_year: latestAnalyticalYear(bloc),
-    };
-  }
-
-  const coverage = productCoverage(bloc, year, selectedFlow);
-  if (!coverage.passes) {
-    const latestUsableYear = latestRepresentativeProductYear(bloc, selectedFlow);
-    return {
-      available: false,
-      coverage_note: `Insufficient selected-year HS2 coverage · ${coverage.reporters.size} of ${members.size} ${bloc} reporters · ${year}`,
-      message: latestUsableYear
-        ? `Insufficient selected-year HS2 coverage for representative bloc composition. Latest representative ${selectedFlow} year is ${latestUsableYear}.`
-        : "Insufficient selected-year HS2 coverage for representative bloc composition. No representative HS2 year meets the 50% reporter and 50% value thresholds.",
-      rows: [],
-      latest_year: latestUsableYear,
-      scope_type: "bloc",
-      coverage,
-    };
-  }
-
-  const selected = coverage.rows;
-  const reporters = coverage.reporters;
-  const byHs2 = new Map();
-  for (const row of selected) {
-    if (row.trade_value_billions_usd == null) continue;
-    const key = `${row.hs2_code}__${row.hs2_description || ""}`;
-    if (!byHs2.has(key)) {
-      byHs2.set(key, {
-        hs2_code: row.hs2_code,
-        hs2_description: row.hs2_description,
-        trade_value_billions_usd: 0,
-      });
-    }
-    byHs2.get(key).trade_value_billions_usd += row.trade_value_billions_usd ?? 0;
-  }
-
-  const total = [...byHs2.values()].reduce((sum, row) => sum + (row.trade_value_billions_usd ?? 0), 0);
-  const rows = [...byHs2.values()]
-    .map(row => ({
-      ...row,
-      hs2_share_pct: total ? (row.trade_value_billions_usd / total) * 100 : null,
-    }))
-    .sort((a, z) => (z.trade_value_billions_usd ?? -1) - (a.trade_value_billions_usd ?? -1))
-    .slice(0, 15);
-
-  return {
-    available: true,
-    coverage_note: `UN Comtrade · ${reporters.size} of ${members.size} ${bloc} reporters · ${year}`,
-    data_year: year,
-    coverage_detail: `Product structure is primarily a country-level view. Reported HS2 ${selectedFlow} total covers ${fmtPct(coverage.valueCoveragePct, 0)} of ${bloc} ${selectedFlow}s.`,
-    scope_type: "bloc",
-    rows,
-  };
+function kpi(id, label, valueHtml, noteHtml) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.remove("skeleton");
+  el.innerHTML = `<div class="lbl">${escapeHTML(label)}</div><div class="val">${valueHtml}</div><div class="delta">${noteHtml || ""}</div>`;
 }
-
-function productCoverage(bloc, year, flow) {
-  const members = analyticalScopeMembers(bloc, year);
-  const selected = DB.products
-    .filter(r => (
-      members.has(r.reporter_iso3) &&
-      r.year === year &&
-      r.flow_type === flow &&
-      r.trade_value_billions_usd != null
-    ));
-  const reporters = new Set(selected.map(r => r.reporter_iso3).filter(Boolean));
-  const scopeRows = analyticalScopeRows(bloc, year);
-  const scopeFlowTotal = scopeRows.reduce((sum, row) => {
-    const value = flow === "import" ? row.imports_billions_usd : row.exports_billions_usd;
-    return sum + (value ?? 0);
-  }, 0);
-  const reporterTotals = new Map();
-  for (const row of selected) {
-    const reporter = row.reporter_iso3;
-    if (!reporter) continue;
-    const totalFromSource = numberOrNull(row.reporter_year_flow_total_usd);
-    const current = reporterTotals.get(reporter) ?? 0;
-    if (totalFromSource != null) {
-      reporterTotals.set(reporter, Math.max(current, totalFromSource / 1e9));
-    } else {
-      reporterTotals.set(reporter, current + (row.trade_value_billions_usd ?? 0));
-    }
-  }
-  const reportedFlowTotal = [...reporterTotals.values()].reduce((sum, value) => sum + value, 0);
-  const reporterCoverage = members.size ? reporters.size / members.size : 0;
-  const valueCoverage = scopeFlowTotal ? reportedFlowTotal / scopeFlowTotal : 0;
-  return {
-    rows: selected,
-    members,
-    reporters,
-    scopeFlowTotal,
-    reportedFlowTotal,
-    reporterCoverage,
-    valueCoverage,
-    valueCoveragePct: valueCoverage * 100,
-    passes: reporterCoverage >= PRODUCT_REPORTER_COVERAGE_THRESHOLD &&
-      valueCoverage >= PRODUCT_VALUE_COVERAGE_THRESHOLD,
-  };
-}
-
-function latestRepresentativeProductYear(bloc, flow) {
-  const years = [...new Set(DB.timeseries
-    .filter(r => r.analytical_bloc_code === bloc)
-    .map(r => r.year)
-    .filter(Number.isFinite))]
-    .sort((a, z) => z - a);
-  for (const candidateYear of years) {
-    if (productCoverage(bloc, candidateYear, flow).passes) return candidateYear;
-  }
-  return null;
-}
-
-// Indexed trade growth for bloc=B, optional country=C.
-function localGrowth(bloc, country, year) {
-  let scoped;
-  if (country) {
-    scoped = DB.timeseries.filter(r => r.country_iso3 === country);
-  } else {
-    const members = analyticalScopeMembers(bloc, year);
-    if (!members.size) return [];
-    scoped = DB.timeseries.filter(r => members.has(r.country_iso3));
-  }
-
-  const base1990 = {};
-  for (const r of scoped) {
-    if (r.year === 1990 && r.total_trade_billions_usd > 0) {
-      base1990[r.country_iso3] = r.total_trade_billions_usd;
-    }
-  }
-
-  return scoped
-    .sort((a, z) => a.year - z.year)
-    .map(r => ({
-      country_iso3: r.country_iso3,
-      country_name: r.country_name,
-      analytical_bloc_code: country ? r.analytical_bloc_code : bloc,
-      year: r.year,
-      base_year: 1990,
-      base_trade_billions_usd: base1990[r.country_iso3] ?? null,
-      total_trade_billions_usd: r.total_trade_billions_usd,
-      index_value: base1990[r.country_iso3] && r.total_trade_billions_usd != null
-        ? r.total_trade_billions_usd / base1990[r.country_iso3] * 100
-        : null,
-    }));
-}
-
-// Operational context for bloc=B and year=Y, optional country=C.
-//
-// Conflict + fragility are "latest window" / "latest available" snapshots, so
-// they resolve scope from the current BLOCS map, not each row's
-// analytical_bloc_code. ACLED/FSI rows are tagged with the time-aware
-// historical bloc, so AES members carry an ECOWAS tag on pre-split rows.
-// Time-series panels keep using historical tags.
-function localOperational(bloc, year, country) {
-  const isCountry = !!country;
-  const members = isCountry ? null : new Set(BLOCS[bloc] || []);
-  const inScope = (r) => isCountry ? r.country_iso3 === country : members.has(r.country_iso3);
-  const scopeBloc = (r) => isCountry ? r.analytical_bloc_code : bloc;
-
-  const conflict = isCountry
-    ? DB.conflict
-        .filter(inScope)
-        .sort((a, z) => (a.hotspot_rank ?? 999) - (z.hotspot_rank ?? 999))
-        .map(r => ({
-          country_iso3: r.country_iso3,
-          country_name: r.country_name,
-          analytical_bloc_code: scopeBloc(r),
-          admin1: r.admin1,
-          window_start_year: r.window_start_year,
-          window_end_year: r.window_end_year,
-          violent_events: r.violent_events,
-          fatalities: r.fatalities,
-          fatalities_per_million: r.fatalities_per_million,
-        }))
-    : Object.values(DB.conflict
-        .filter(inScope)
-        .reduce((acc, r) => {
-          const key = r.country_iso3;
-          if (!acc[key]) {
-            acc[key] = {
-              country_iso3: r.country_iso3,
-              country_name: r.country_name,
-              analytical_bloc_code: bloc,
-              admin1: null,
-              window_start_year: r.window_start_year,
-              window_end_year: r.window_end_year,
-              violent_events: 0,
-              fatalities: 0,
-              fatalities_per_million: null,
-            };
-          }
-          acc[key].window_start_year = Math.min(acc[key].window_start_year ?? r.window_start_year, r.window_start_year ?? acc[key].window_start_year);
-          acc[key].window_end_year = Math.max(acc[key].window_end_year ?? r.window_end_year, r.window_end_year ?? acc[key].window_end_year);
-          acc[key].violent_events += r.violent_events ?? 0;
-          acc[key].fatalities += r.fatalities ?? 0;
-          return acc;
-        }, {}))
-        .sort((a, z) => (z.violent_events ?? 0) - (a.violent_events ?? 0) || (z.fatalities ?? 0) - (a.fatalities ?? 0) || a.country_name.localeCompare(z.country_name));
-
-  const fragility = DB.fragility
-    .filter(inScope)
-    .sort((a, z) => (z.fsi_total_score ?? 0) - (a.fsi_total_score ?? 0))
-    .map(r => ({
-      country_iso3: r.country_iso3,
-      country_name: r.country_name,
-      analytical_bloc_code: scopeBloc(r),
-      fsi_total_score: r.fsi_total_score,
-      cohesion_score: r.cohesion_score,
-      economic_score: r.economic_score,
-      political_score: r.political_score,
-      social_cross_cutting_score: r.social_cross_cutting_score,
-      fsi_year: r.fsi_year,
-    }));
-
-  return { conflict, fragility };
-}
-
-// Pipeline health, computed from in-memory static data.
-function localHealthData() {
-  const ts = DB.timeseries;
-  const countries = new Set(ts.map(r => r.country_iso3)).size;
-  const years = ts.map(r => r.year);
-  const minYear = Math.min(...years);
-  const maxYear = Math.max(...years);
-
-  const blocs = new Set(DB.bloc.map(r => r.analytical_bloc_code)).size;
-
-  const totalVE  = DB.conflict.reduce((s, r) => s + (r.violent_events ?? 0), 0);
-  const totalFat = DB.conflict.reduce((s, r) => s + (r.fatalities ?? 0), 0);
-  const cYears   = DB.conflict.map(r => r.window_start_year).filter(Boolean);
-  const cMaxYears = DB.conflict.map(r => r.window_end_year).filter(Boolean);
-
-  const fsiYears = DB.fragility.map(r => r.fsi_year).filter(Boolean);
-
-  return {
-    status: "ok",
-    panels: [
-      {
-        label: "Country-year mart",
-        value: `${ts.length} rows`,
-        description: `${countries} countries · ${minYear}-${maxYear}`,
-      },
-      {
-        label: "Bloc mart",
-        value: `${blocs} blocs`,
-        description: `${DB.bloc.length} bloc-year rows`,
-      },
-      {
-        label: "ACLED coverage",
-        value: `${totalVE.toLocaleString("en-US")} events`,
-        description: cYears.length
-          ? `hotspot windows cover ${Math.min(...cYears)}-${Math.max(...cMaxYears)}`
-          : "no conflict data",
-      },
-      {
-        label: "FSI coverage",
-        value: `${DB.fragility.length} countries`,
-        description: fsiYears.length
-          ? `latest components from ${Math.min(...fsiYears)}-${Math.max(...fsiYears)}; no 2024 release in source`
-          : "no FSI data",
-      },
-    ],
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Dashboard state
-// ---------------------------------------------------------------------------
-
-const API_BASE = "";
-
-const State = {
-  bloc: "CEMAC",
-  year: 2024,
-  country: null,
-  mapMetric: "trade_openness",
-  p1: null,
-  p2: null,
-  meta: null,
-  mapRows: [],
-  loadVersion: 0,
-  productsFlow: "export",
-};
-
-const METRIC_META = {
-  total_trade:    { label: "Total trade", format: shortMoneyB },
-  trade_openness: { label: "Trade openness", format: value => fmtPct(value) },
-  hhi:            { label: "Partner HHI", format: value => fmtPlain(value, 3) },
-  gdp:            { label: "GDP", format: shortMoneyB },
-  fragility:      { label: "Fragility score", format: value => fmtPlain(value, 1) },
-  conflict:       { label: "Fatalities per million", format: value => fmtPlain(value, 1) },
-};
 
 function toast(message, duration = 6000) {
   const el = document.getElementById("toast");
   if (!el) return;
   el.textContent = message;
   el.classList.add("visible");
-  window.clearTimeout(toast._timer);
-  toast._timer = window.setTimeout(() => el.classList.remove("visible"), duration);
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => el.classList.remove("visible"), duration);
 }
 
-function isFresh(version) {
-  return version === State.loadVersion;
-}
-
-function countryName(iso) {
-  return State.meta?.country_names?.[iso] || iso;
-}
-
-function scopeName() {
-  return State.country ? countryName(State.country) : State.bloc;
-}
-
-function numberOrNull(value) {
-  if (value === null || value === undefined || value === "") return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
-function fmtCurrency(value, digits = 0) {
-  if (value === null || value === undefined || value === "") return "--";
-  const n = Number(value);
-  if (!Number.isFinite(n)) return "--";
-  return `$${n.toLocaleString("en-US", { maximumFractionDigits: digits })}`;
-}
-
-function fmtPop(value) {
-  if (value === null || value === undefined || value === "") return "--";
-  const n = Number(value);
-  if (!Number.isFinite(n)) return "--";
-  if (n >= 1000) return `${(n / 1000).toFixed(2)}B`;
-  return `${n.toFixed(n >= 10 ? 1 : 2)}M`;
-}
-
-function deltaBadge(value, digits = 1, suffix = "", direction = "higher-good") {
-  if (value === null || value === undefined || value === "") return "";
-  const n = Number(value);
-  if (!Number.isFinite(n)) return "";
-  let tone = "flat";
-  if (n !== 0 && direction !== "neutral") {
-    if (direction === "higher-bad") {
-      tone = n > 0 ? "down" : "up";
-    } else if (direction === "lower-good") {
-      tone = n < 0 ? "up" : "down";
-    } else {
-      tone = n > 0 ? "up" : "down";
-    }
-  }
-  const arrow = n > 0 ? "▲" : n < 0 ? "▼" : "•";
-  return `<span class="delta-badge ${tone}">${arrow} ${Math.abs(n).toFixed(digits)}${suffix}</span>`;
-}
-
-function metricDelta(current, previous, kind = "pct", digits = 1, suffix = "", direction = "higher-good") {
-  const curr = numberOrNull(current);
-  const prev = numberOrNull(previous);
-  if (curr == null || prev == null) return "";
-  if (kind === "pct") {
-    if (prev === 0) return "";
-    return deltaBadge(((curr - prev) / Math.abs(prev)) * 100, digits, "% YoY", direction);
-  }
-  if (kind === "pp") {
-    return deltaBadge(curr - prev, digits, " pp YoY", direction);
-  }
-  return deltaBadge(curr - prev, digits, `${suffix} YoY`, direction);
-}
-
-function infoLine(deltaHtml, text) {
-  const note = text ? `<span class="note-fragment">${escapeHTML(text)}</span>` : "";
-  return `${deltaHtml || ""}${note}`;
-}
-
-function kpi(id, label, value, note, tone = "flat") {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.classList.remove("skeleton");
-  el.innerHTML = `
-    <div class="lbl">${escapeHTML(label)}</div>
-    <div class="val">${escapeHTML(value)}</div>
-    <div class="delta ${tone}">${note || ""}</div>
-  `;
-}
-
-function econ(id, label, value, desc) {
-  const el = document.getElementById(id);
-  if (!el) return;
-  el.classList.remove("skeleton");
-  el.innerHTML = `
-    <div class="lbl">${escapeHTML(label)}</div>
-    <div class="val">${escapeHTML(value)}</div>
-    <div class="desc">${desc || ""}</div>
-  `;
-}
-
-function updateToolbarActive() {
-  document.querySelectorAll(".bloc-btn").forEach(btn => {
-    const active = btn.dataset.bloc === State.bloc;
-    btn.classList.toggle("active", active);
-    btn.setAttribute("aria-selected", active ? "true" : "false");
-  });
-}
-
-function updateCrumb() {
-  const el = document.getElementById("crumb");
-  if (!el) return;
+// ---------------------------------------------------------------------------
+// Scope view model: one place that maps country and bloc rows to the same fields
+// ---------------------------------------------------------------------------
+function scopeRow(year = State.year) {
   if (State.country) {
-    el.innerHTML =
-      `Viewing <b>${escapeHTML(State.bloc)} - ${escapeHTML(scopeName())}</b>` +
-      ` <span class="crumb-sep">·</span> <b>${State.year}</b>` +
-      ` <span class="crumb-sep">·</span> country profile` +
-      ` <button class="back-btn" id="back-btn" type="button">Back to ${escapeHTML(State.bloc)}</button>`;
-    document.getElementById("back-btn")?.addEventListener("click", () => {
-      State.country = null;
-      State.p1 = null;
-      State.p2 = null;
-      loadAll();
-    });
-  } else {
-    el.innerHTML =
-      `Viewing <b>${escapeHTML(State.bloc)}</b>` +
-      ` <span class="crumb-sep">·</span> <b>${State.year}</b>` +
-      ` <span class="crumb-sep">·</span> all countries`;
+    const r = IDX.ct[State.country]?.[year];
+    if (!r) return null;
+    return {
+      kind: "country",
+      year,
+      members: [State.country],
+      memberCount: 1,
+      tradeReporting: r.total_trade_billions_usd == null ? 0 : 1,
+      gdpReporting: r.gdp_current_usd_billions == null ? 0 : 1,
+      trade: r.total_trade_billions_usd,
+      exports: r.exports_billions_usd,
+      imports: r.imports_billions_usd,
+      balance: r.trade_balance_billions_usd,
+      openness: r.trade_openness_pct_gdp,
+      expPct: r.exports_pct_gdp,
+      impPct: r.imports_pct_gdp,
+      topPartnerCode: r.top_partner_iso3,
+      topPartnerName: r.top_partner_name,
+      topShare: r.top_partner_share_of_world_pct,
+      top3Share: r.top3_partner_share_of_world_pct,
+      hhi: r.total_trade_partner_hhi,
+      namedCoverage: r.named_partner_coverage_pct,
+      gdp: r.gdp_current_usd_billions,
+      pop: r.population_millions,
+      gdppc: r.gdp_per_capita_current_usd,
+      growth: r.real_gdp_growth_pct_imf,
+      inflation: r.inflation_cpi_pct,
+      debt: r.gross_debt_pct_gdp_imf,
+      fiscal: r.net_lending_borrowing_pct_gdp_imf,
+      ca: r.current_account_balance_pct_gdp_imf,
+      fatalitiesPm: r.fatalities_per_million,
+      fatalities: r.fatalities,
+      conflictNote: r.acled_covered ? null : "not in ACLED coverage for this year",
+      fsi: r.fsi_total_score,
+      fsiReporting: r.fsi_total_score == null ? 0 : 1,
+    };
   }
+  const b = IDX.bloc[State.bloc]?.[year];
+  if (!b) return null;
+  return {
+    kind: "bloc",
+    year,
+    members: b.members,
+    memberCount: b.member_count,
+    tradeReporting: b.trade_reporting,
+    gdpReporting: b.gdp_reporting,
+    trade: b.total_trade_billions_usd,
+    exports: b.exports_billions_usd,
+    imports: b.imports_billions_usd,
+    balance: b.trade_balance_billions_usd,
+    openness: b.trade_openness_pct_gdp,
+    opennessCountries: b.openness_countries,
+    expPct: b.exports_pct_gdp,
+    impPct: b.imports_pct_gdp,
+    topPartnerCode: b.top_partner_code,
+    topPartnerName: b.top_partner_name,
+    topShare: b.top_partner_share_of_world_pct,
+    top3Share: b.top3_partner_share_of_world_pct,
+    hhi: b.bloc_partner_hhi,
+    namedCoverage: b.named_partner_coverage_pct,
+    gdp: b.gdp_current_usd_billions,
+    pop: b.population_millions,
+    gdppc: b.gdp_per_capita_current_usd,
+    growth: b.real_gdp_growth_pct_weighted,
+    inflation: b.inflation_pct_weighted,
+    debt: b.gross_debt_pct_gdp_weighted,
+    fiscal: b.net_lending_borrowing_pct_gdp_weighted,
+    ca: b.current_account_pct_gdp_weighted,
+    debtReporting: b.gross_debt_reporting,
+    fatalitiesPm: b.fatalities_per_million,
+    fatalities: b.fatalities,
+    conflictReporting: b.conflict_reporting,
+    conflictNote: b.conflict_reporting === 0 ? "no member in ACLED coverage for this year" : null,
+    fsi: b.fsi_total_score_mean,
+    fsiReporting: b.fsi_reporting,
+  };
 }
 
-function renderOverview(overview, previous = null) {
-  const partner = overview.main_partner_iso3 || "--";
-  const partnerName = overview.main_partner_name || partner;
-  const conflict = overview.fatalities_per_million ?? overview.violent_events_per_million;
-  const prevConflict = previous ? (previous.fatalities_per_million ?? previous.violent_events_per_million) : null;
-  const fsiDelta = overview.fsi_is_latest_available
-    ? ""
-    : metricDelta(overview.avg_fsi_score, previous?.avg_fsi_score, "abs", 1, " pts", "higher-bad");
-  const fsiNote = overview.fsi_is_latest_available
-    ? `latest FSI ${overview.fsi_year ?? "available"}`
-    : (overview.fragility_band || "selected-year FSI where available");
-  const partnerNote = previous?.main_partner_iso3 && previous.main_partner_iso3 !== partner
-    ? infoLine("", `was ${previous.main_partner_iso3} in ${State.year - 1}`)
-    : infoLine(metricDelta(overview.top_partner_share_pct, previous?.top_partner_share_pct, "pp", 1, "", "higher-bad"), `${partnerName} · ${fmtPct(overview.top_partner_share_pct)} of trade`);
-
-  kpi("kpi-trade", "Total trade", shortMoneyB(overview.total_trade_billions_usd), infoLine(metricDelta(overview.total_trade_billions_usd, previous?.total_trade_billions_usd, "pct", 1), `USD billions, ${State.year}`));
-  kpi("kpi-partner", "Main partner", partner, partnerNote);
-  kpi("kpi-hhi", "Trade concentration", fmtPlain(overview.hhi, 3), infoLine(metricDelta(overview.hhi, previous?.hhi, "abs", 3, "", "higher-bad"), hhiBand(overview.hhi)));
-  kpi("kpi-frag", "Fragility", fmtPlain(overview.avg_fsi_score, 1), fragBandPill(overview.fragility_band) + infoLine(fsiDelta, fsiNote));
-  kpi("kpi-conflict", "Conflict intensity", fmtPlain(conflict, 1), infoLine(metricDelta(conflict, prevConflict, "abs", 1, " /m", "higher-bad"), overview.fatalities_per_million == null ? "violent events / million" : "fatalities / million"));
-  kpi("kpi-open", "Trade openness", fmtPct(overview.trade_openness_pct_gdp), infoLine(metricDelta(overview.trade_openness_pct_gdp, previous?.trade_openness_pct_gdp, "pp", 1, "", "neutral"), "exports + imports / GDP"));
-
-  econ("econ-gdp", "GDP", shortMoneyB(overview.gdp_current_usd_billions), infoLine(metricDelta(overview.gdp_current_usd_billions, previous?.gdp_current_usd_billions, "pct", 1), "current USD"));
-  econ("econ-pop", "Population", fmtPop(overview.population_millions), infoLine(metricDelta(overview.population_millions, previous?.population_millions, "pct", 1), "millions"));
-  econ("econ-gdp-pc", "GDP per capita", fmtCurrency(overview.gdp_per_capita_usd), infoLine(metricDelta(overview.gdp_per_capita_usd, previous?.gdp_per_capita_usd, "pct", 1), "USD, current"));
-  econ("econ-growth", "Real GDP growth", fmtPct(overview.real_gdp_growth_pct), infoLine(metricDelta(overview.real_gdp_growth_pct, previous?.real_gdp_growth_pct, "pp", 1), "year-on-year"));
-  econ("econ-inflation", "Inflation", fmtPct(overview.inflation_pct), infoLine(metricDelta(overview.inflation_pct, previous?.inflation_pct, "pp", 1, "", "higher-bad"), "avg consumer prices"));
-  econ("econ-debt", "Govt debt / GDP", fmtPct(overview.govt_debt_pct_gdp), infoLine(metricDelta(overview.govt_debt_pct_gdp, previous?.govt_debt_pct_gdp, "pp", 1, "", "higher-bad"), "GDP-weighted for bloc views"));
-  econ("econ-trade-gdp", "Fiscal balance", fmtPct(overview.fiscal_balance_pct_gdp), infoLine(metricDelta(overview.fiscal_balance_pct_gdp, previous?.fiscal_balance_pct_gdp, "pp", 1), "net lending / borrowing % GDP"));
-  econ("econ-exports-gdp", "Exports / GDP", fmtPct(overview.exports_pct_gdp), infoLine(metricDelta(overview.exports_pct_gdp, previous?.exports_pct_gdp, "pp", 1), "export exposure"));
-  econ("econ-imports-gdp", "Imports / GDP", fmtPct(overview.imports_pct_gdp), infoLine(metricDelta(overview.imports_pct_gdp, previous?.imports_pct_gdp, "pp", 1, "", "higher-bad"), "import reliance"));
-
-  const note = document.getElementById("econ-note");
-  if (note) {
-    note.classList.remove("skeleton");
-    note.innerHTML = `
-      <div class="lbl">Economic context · ${escapeHTML(scopeName())}</div>
-      <div class="desc">${escapeHTML(overview.economic_note || "IMF WEO metrics are shown with latest available values; bloc ratios use aggregate or weighted calculations.")}</div>
-    `;
-  }
-
-  renderStructureTree(overview);
-  renderRiskRadar(riskScores(overview), scopeName());
-}
-
-function hhiBand(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return "no concentration score";
-  if (n < 0.15) return "diversified partner base";
-  if (n <= 0.25) return "moderately concentrated";
-  return "highly concentrated";
-}
-
-function fragBandClass(band) {
-  if (!band) return "band-unknown";
-  const b = band.toLowerCase();
-  if (b.includes("very high alert")) return "band-very-high-alert";
-  if (b.includes("high alert")) return "band-high-alert";
-  if (b.includes("alert")) return "band-alert";
-  if (b.includes("elevated warning") || b.includes("high warning")) return "band-elevated-warning";
-  if (b.includes("warning")) return "band-warning";
-  return "band-stable";
-}
-
-function fragBandPill(band) {
-  if (!band) return "";
-  return `<span class="frag-band-pill ${fragBandClass(band)}">${escapeHTML(band)}</span>`;
-}
-
-function riskScores(o) {
-  const debt = numberOrNull(o.govt_debt_pct_gdp);
-  const fiscal = numberOrNull(o.fiscal_balance_pct_gdp);
-  const inflation = numberOrNull(o.inflation_pct);
-  const currentAccount = numberOrNull(o.current_account_pct_gdp);
-  const fragility = numberOrNull(o.avg_fsi_score);
-  const conflict = numberOrNull(o.fatalities_per_million);
-  return [
-    { label: "Debt burden", score: rangeScore(debt, 40, 100), actual: fmtPct(debt), detail: "gross government debt / GDP" },
-    { label: "Fiscal deficit", score: rangeScore(fiscal == null ? null : -fiscal, 3, 10), actual: fmtPct(fiscal), detail: "net lending / borrowing, % GDP" },
-    { label: "Inflation", score: rangeScore(inflation, 5, 25), actual: fmtPct(inflation), detail: "consumer prices, annual %" },
-    { label: "External deficit", score: rangeScore(currentAccount == null ? null : -currentAccount, 3, 20), actual: fmtPct(currentAccount), detail: "current account balance / GDP" },
-    { label: "Fragility", score: fragility == null ? null : clamp(fragility / 120 * 100), actual: fmtPlain(fragility, 1), detail: "Fund for Peace FSI, latest available" },
-    { label: "Conflict", score: conflict == null ? null : clamp(conflict / 200 * 100), actual: `${fmtPlain(conflict, 1)} /m`, detail: "fatalities per million" },
-  ];
-}
-
-function clamp(value) {
-  return Math.max(0, Math.min(100, value));
-}
-
-function rangeScore(value, low, high) {
-  const n = numberOrNull(value);
-  if (n == null) return null;
-  return clamp((n - low) / (high - low) * 100);
-}
-
-function setMapTitle() {
-  const meta = METRIC_META[State.mapMetric] || METRIC_META.trade_openness;
-  const mapTitle = document.getElementById("map-title");
-  const mapSub   = document.getElementById("map-sub");
-  if (mapTitle) mapTitle.textContent = `${State.country ? scopeName() : "All blocs"} · ${meta.label}`;
-  if (mapSub)   mapSub.textContent = State.country ? "Country selected - use Back to return to bloc view" : "Click a country to drill in";
+function comparablePrevious(cur) {
+  if (!cur) return null;
+  const prev = scopeRow(State.year - 1);
+  if (!prev) return null;
+  if (cur.kind === "bloc" && prev.members.join("|") !== cur.members.join("|")) return null;
+  return prev;
 }
 
 // ---------------------------------------------------------------------------
-// Load / render functions  (same signatures as app.js, but use local queries)
+// URL state (shareable, back/forward)
 // ---------------------------------------------------------------------------
-
-async function loadOverview(version) {
-  const overview = localOverview(State.bloc, State.year, State.country);
-  const previous = comparablePreviousOverview(State.bloc, State.year, State.country);
-  if (!isFresh(version)) return;
-  renderOverview(overview, previous);
+function readUrl() {
+  const p = new URLSearchParams(location.search);
+  const year = Number(p.get("year"));
+  if (YEARS.includes(year)) State.year = year;
+  const bloc = p.get("bloc");
+  if (BLOCS.includes(bloc)) State.bloc = bloc;
+  const country = p.get("country");
+  State.country = country && IDX.ct[country] ? country : null;
+  const metric = p.get("metric");
+  if (MAP_METRICS[metric]) State.mapMetric = metric;
+  if (State.country) State.bloc = blocOf(State.country, State.year) || State.bloc;
 }
 
-async function loadMap(version) {
-  const rows = localMap(State.mapMetric, State.year);
-  if (!isFresh(version)) return;
-  State.mapRows = rows;
-  setMapTitle();
-  await renderMap(rows, State, METRIC_META[State.mapMetric] || METRIC_META.trade_openness, version);
+function writeUrl(push = true) {
+  const p = new URLSearchParams();
+  p.set("bloc", State.bloc);
+  p.set("year", String(State.year));
+  if (State.country) p.set("country", State.country);
+  if (State.mapMetric !== "openness") p.set("metric", State.mapMetric);
+  const url = `${location.pathname}?${p.toString()}${location.hash}`;
+  if (url === `${location.pathname}${location.search}${location.hash}`) return;
+  if (push) history.pushState(null, "", url);
+  else history.replaceState(null, "", url);
 }
 
-async function loadPartners(version) {
-  const partnerTitle = document.getElementById("partners-title");
-  const partnerSub = document.getElementById("partners-sub");
-  const partnerBars = document.getElementById("partner-bars");
-  if (partnerTitle) partnerTitle.textContent = `${scopeName()} · Top 10 trading partners`;
-  if (partnerSub) partnerSub.textContent = `Trade value, USD billions · ${State.year} · ranked within selected scope`;
-  if (partnerBars) partnerBars.innerHTML = `<div class="empty-state">Loading ${State.year} partner data...</div>`;
-
-  const rows = localPartners(State.bloc, State.year, State.country);
-  if (!isFresh(version)) return;
-
-  renderPartnerBars(rows);
-  const dependence = localPartnerDependence(State.bloc, State.year, State.country);
-  if (!isFresh(version)) return;
-  renderPartnerDependence(dependence, State);
+// ---------------------------------------------------------------------------
+// Controls
+// ---------------------------------------------------------------------------
+function populateControls() {
+  const yearSel = document.getElementById("year-select");
+  yearSel.innerHTML = [...YEARS].reverse().map(y => `<option value="${y}">${y}</option>`).join("");
+  const metricSel = document.getElementById("metric-select");
+  metricSel.innerHTML = Object.entries(MAP_METRICS).map(([k, m]) => `<option value="${k}">${escapeHTML(m.label)}</option>`).join("");
+  const countrySel = document.getElementById("country-select");
+  const groups = BLOCS.map(b => {
+    const isos = Object.keys(CURRENT_BLOC).filter(c => CURRENT_BLOC[c] === b).sort((a, z) => countryName(a).localeCompare(countryName(z)));
+    return `<optgroup label="${b} (current)">${isos.map(c => `<option value="${c}">${escapeHTML(countryName(c))}</option>`).join("")}</optgroup>`;
+  }).join("");
+  countrySel.innerHTML = `<option value="">All countries in bloc</option>${groups}`;
 }
 
-async function loadConcentration(version) {
-  const integrationTitle = document.getElementById("integration-title");
-  if (integrationTitle) integrationTitle.textContent = "Trade openness trend (% of GDP)";
-  const integrationSub = document.getElementById("integration-sub");
-  if (integrationSub) {
-    integrationSub.textContent = "Exports + imports as % of GDP — higher signals greater external trade dependency";
-  }
-
-  const data = localConcentration(State.bloc, State.year, State.country);
-  if (!isFresh(version)) return;
-  document.getElementById("hhi-title").textContent = State.country ? `${scopeName()} · Partner concentration (HHI)` : "Partner concentration (HHI)";
-  document.getElementById("hhi-sub").textContent = State.country
-    ? "Country HHI from annual partner concentration. 0.15 = diversified · 0.25 = highly concentrated."
-    : "Bloc HHI computed on aggregated partner shares (top-15-per-reporter subset). 0.15 = diversified · 0.25 = highly concentrated.";
-  renderHHI(data, State);
-  renderIntegration(data.intra || [], State);
-}
-
-async function loadGrowth(version) {
-  const rows = localGrowth(State.bloc, State.country, State.year);
-  if (!isFresh(version)) return;
-  document.getElementById("growth-title").textContent = `${scopeName()} · Trade growth indexed to 1990`;
-  const memberCount = State.country ? 1 : analyticalScopeMembers(State.bloc, State.year).size;
-  document.getElementById("growth-sub").textContent = State.country
-    ? "Selected country - 1990 = 100 - nominal current USD"
-    : memberCount
-      ? `${State.bloc} ${State.year} analytical members - historical trajectories rebased to 1990 = 100`
-      : `No ${State.bloc} analytical membership coverage in ${State.year}`;
-  document.getElementById("growth-note").textContent =
-    "Source: IMF IMTS/DOTS · selected-year members only · nominal current USD · missing years shown as gaps · log scale when range exceeds 15×";
-  renderGrowth(rows, State);
-}
-
-async function loadOperational(version) {
-  const data = localOperational(State.bloc, State.year, State.country);
-  if (!isFresh(version)) return;
-  document.getElementById("conflict-title").textContent = State.country
-    ? `${scopeName()} · Conflict hotspots`
-    : `${scopeName()} · Conflict by country`;
-  document.getElementById("conflict-sub").textContent = State.country
-    ? "ACLED - admin1 regions, latest 3-year hotspot window"
-    : "ACLED - member countries, latest 3-year window";
-  renderConflict(data.conflict || []);
-  renderFragility(data.fragility || []);
-}
-
-async function loadHealth(version) {
-  const data = localHealthData();
-  if (!isFresh(version)) return;
-  renderHealth(data.panels || []);
-}
-
-async function loadProducts(version) {
-  const titleEl = document.getElementById("products-title");
-  const subEl = document.getElementById("products-sub");
-  const noteEl = document.getElementById("products-note");
-  const emptyEl = document.getElementById("products-empty");
-  const chartEl = document.getElementById("products-treemap");
-  if (titleEl) titleEl.textContent = `${scopeName()} · Top ${State.productsFlow} sectors`;
-  if (subEl) subEl.textContent = `Loading ${State.productsFlow} product sectors...`;
-  if (noteEl) noteEl.textContent = "";
-  if (emptyEl) {
-    emptyEl.hidden = true;
-    emptyEl.textContent = "";
-  }
-  if (chartEl) {
-    chartEl.style.display = "";
-    chartEl.innerHTML = "";
-  }
-
-  const data = localProducts(State.bloc, State.year, State.country, State.productsFlow);
-  if (!isFresh(version)) return;
-
-  if (!data.available) {
-    if (chartEl) {
-      chartEl.style.display = "none";
-      chartEl.innerHTML = "";
-    }
-    if (subEl) subEl.textContent = data.coverage_note || "Product data not available for this selection.";
-    if (emptyEl) {
-      emptyEl.hidden = false;
-      emptyEl.textContent = data.message || (data.latest_year
-        ? `No selected-year HS2 product coverage. Latest available product year is ${data.latest_year}.`
-        : "No HS2 product coverage is available for this selection.");
-    }
-    if (noteEl) noteEl.textContent = data.scope_type === "country"
-      ? "Country product panels use reporter-submitted selected-year HS2 rows only."
-      : "Product structure is primarily a country-level view. Bloc composition requires at least 50% reporter coverage and 50% value coverage.";
-    return;
-  }
-
-  if (chartEl) chartEl.style.display = "";
-  if (emptyEl) emptyEl.hidden = true;
-  if (subEl) subEl.textContent = data.coverage_note || `UN Comtrade · ${State.year}`;
-  if (noteEl) {
-    noteEl.textContent = data.coverage_detail ||
-      "Reporter-submitted UN Comtrade HS2 values. Product structure is primarily a country-level view; bloc views require representative reporter and value coverage.";
-  }
-  renderProducts(data.rows, State.productsFlow);
-}
-
-async function loadAll() {
-  const version = ++State.loadVersion;
-  updateToolbarActive();
-  updateCrumb();
-  setMapTitle();
-
-  const results = await Promise.allSettled([
-    loadOverview(version),
-    loadMap(version),
-    loadPartners(version),
-    loadConcentration(version),
-    loadGrowth(version),
-    loadOperational(version),
-    loadProducts(version),
-    loadHealth(version),
-  ]);
-  const failed = results.find(r => r.status === "rejected");
-  if (failed && isFresh(version)) {
-    console.error(failed.reason);
-    toast(`Dashboard data error: ${failed.reason.message}`);
-  }
-}
-
-function populateYears(years) {
-  const el = document.getElementById("year-select");
-  const sorted = [...years].sort((a, b) => b - a);
-  el.innerHTML = sorted.map(year => `<option value="${year}">${year}</option>`).join("");
-  el.value = State.year;
-}
-
-function populateMetrics(metrics) {
-  const el = document.getElementById("metric-select");
-  el.innerHTML = metrics.map(metric => `<option value="${escapeHTML(metric.value)}">${escapeHTML(metric.label)}</option>`).join("");
-  el.value = State.mapMetric;
+function syncControls() {
+  document.getElementById("year-select").value = String(State.year);
+  document.getElementById("metric-select").value = State.mapMetric;
+  document.getElementById("country-select").value = State.country || "";
+  document.querySelectorAll(".bloc-btn").forEach(btn => {
+    const on = btn.dataset.bloc === State.bloc;
+    btn.classList.toggle("active", on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+  });
 }
 
 function attachListeners() {
-  document.getElementById("bloc-tabs").addEventListener("click", event => {
-    const button = event.target.closest(".bloc-btn");
-    if (!button) return;
-    State.bloc = button.dataset.bloc;
-    State.country = null;
-    State.p1 = null;
-    State.p2 = null;
-    loadAll();
-  });
-
-  document.getElementById("year-select").addEventListener("change", event => {
-    State.year = parseInt(event.target.value, 10);
-    loadAll();
-  });
-
-  document.getElementById("metric-select").addEventListener("change", event => {
-    State.mapMetric = event.target.value;
-    loadMap(State.loadVersion);
-  });
-
-  document.getElementById("flow-toggle")?.addEventListener("click", event => {
-    const btn = event.target.closest(".flow-btn");
+  document.getElementById("bloc-tabs").addEventListener("click", e => {
+    const btn = e.target.closest(".bloc-btn");
     if (!btn) return;
-    State.productsFlow = btn.dataset.flow;
-    document.querySelectorAll(".flow-btn").forEach(b => b.classList.toggle("active", b === btn));
-    loadProducts(State.loadVersion);
+    State.bloc = btn.dataset.bloc;
+    State.country = null;
+    if (!membersOf(State.bloc, State.year).length) {
+      toast(`${BLOC_LABEL[State.bloc]} exists in the data only for 2024; showing 2024.`);
+      State.year = 2024;
+    }
+    update();
+  });
+  document.getElementById("year-select").addEventListener("change", e => {
+    State.year = Number(e.target.value);
+    if (State.country) {
+      State.bloc = blocOf(State.country, State.year) || State.bloc;
+    } else if (!membersOf(State.bloc, State.year).length) {
+      toast(`${BLOC_LABEL[State.bloc]} has no members in ${State.year} under the analytical cohort rule; showing ECOWAS.`);
+      State.bloc = "ECOWAS";
+    }
+    update();
+  });
+  document.getElementById("metric-select").addEventListener("change", e => {
+    State.mapMetric = e.target.value;
+    update();
+  });
+  document.getElementById("country-select").addEventListener("change", e => {
+    selectCountry(e.target.value || null);
+  });
+  window.addEventListener("popstate", () => {
+    readUrl();
+    render();
   });
 }
 
-window.dashboardSelectCountry = function dashboardSelectCountry(iso) {
-  const row = State.mapRows.find(item => item.country_iso3 === iso);
-  State.country = iso;
-  if (row?.analytical_bloc_code) State.bloc = row.analytical_bloc_code;
-  State.p1 = null;
-  State.p2 = null;
-  loadAll();
-};
+function selectCountry(iso) {
+  if (!iso || iso === State.country) {
+    State.country = null;
+  } else {
+    State.country = iso;
+    State.bloc = blocOf(iso, State.year) || State.bloc;
+  }
+  update();
+}
+window.dashboardSelectCountry = selectCountry;
+
+function update() {
+  writeUrl(true);
+  render();
+}
+
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+function renderCrumb() {
+  const el = document.getElementById("crumb");
+  const yr = State.year;
+  if (State.country) {
+    const b = blocOf(State.country, yr);
+    el.innerHTML = `<button class="back-btn" type="button" id="back-btn">← ${escapeHTML(BLOC_LABEL[b] || b)}</button>
+      <span class="crumb-sep">/</span><b>${escapeHTML(countryName(State.country))}</b>
+      <span class="crumb-sep">·</span>${yr}<span class="crumb-sep">·</span>analytical bloc in ${yr}: ${escapeHTML(BLOC_LABEL[b] || b)}`;
+    document.getElementById("back-btn").addEventListener("click", () => selectCountry(null));
+  } else {
+    const m = membersOf(State.bloc, yr);
+    el.innerHTML = `<b>${escapeHTML(BLOC_LABEL[State.bloc])}</b><span class="crumb-sep">·</span>${yr}<span class="crumb-sep">·</span>${m.length} member${m.length === 1 ? "" : "s"}: ${m.map(c => escapeHTML(countryName(c))).join(", ")}`;
+  }
+  const notice = document.getElementById("cohort-notice");
+  const showCohort = State.year >= 2024 && (State.bloc === "AES" || State.bloc === "ECOWAS" || AES_MEMBERS.includes(State.country));
+  notice.hidden = !showCohort;
+  if (showCohort) {
+    notice.innerHTML = `<b>Analytical cohort.</b> Burkina Faso, Mali and Niger are grouped as AES from the AES confederation treaty (6 July 2024).
+      Their legal withdrawal from ECOWAS took effect on 29 January 2025, so in 2024 they were still legally ECOWAS members.
+      ECOWAS in 2024 here means the 12 other members. Earlier years group all 15 as ECOWAS.`;
+  }
+}
+
+function renderOverview() {
+  const cur = scopeRow();
+  const prev = comparablePrevious(cur);
+  document.getElementById("overview-period").textContent = `${scopeName()} · ${State.year}`;
+  if (!cur) {
+    ["kpi-trade", "kpi-open", "kpi-partner", "kpi-hhi", "kpi-gdp", "kpi-conflict"].forEach(id => kpi(id, "", "--", "no data"));
+    return;
+  }
+  const n = cur.memberCount;
+  kpi("kpi-trade", "Goods trade", shortMoneyB(cur.trade),
+    `${delta(cur.trade, prev?.trade)} exports + imports, IMF World ${cur.kind === "bloc" ? reportingChip(cur.tradeReporting, n) : ""}`);
+  kpi("kpi-open", "Trade openness", fmtPct(cur.openness, 1),
+    `${delta(cur.openness, prev?.openness, { kind: "abs", suffix: " pp" })} % of GDP`);
+  const tp = cur.topPartnerCode ? partnerLabel(cur.topPartnerCode, cur.topPartnerName) : "--";
+  kpi("kpi-partner", "Top partner", escapeHTML(tp),
+    cur.topShare == null ? "share unavailable (incomplete reporting)" : `${fmtPct(cur.topShare)} of trade · top 3: ${fmtPct(cur.top3Share)}`);
+  kpi("kpi-hhi", "Partner concentration", fmtPlain(cur.hhi, 3),
+    `HHI over named partners · ${cur.namedCoverage == null ? "coverage n/a" : `named partners = ${fmtPct(cur.namedCoverage, 0)} of World`}`);
+  kpi("kpi-gdp", "GDP", shortMoneyB(cur.gdp),
+    `${delta(cur.gdp, prev?.gdp)} current USD ${cur.kind === "bloc" ? reportingChip(cur.gdpReporting, n) : ""}`);
+  kpi("kpi-conflict", "Conflict fatalities", cur.fatalitiesPm == null ? "--" : `${fmtPlain(cur.fatalitiesPm, 1)}<small>/m</small>`,
+    cur.conflictNote ? escapeHTML(cur.conflictNote)
+      : `${fmtNumber(cur.fatalities)} fatalities in ${State.year} (ACLED) ${cur.kind === "bloc" ? reportingChip(cur.conflictReporting, n) : ""}`);
+
+  const econ = [
+    ["Population", cur.pop == null ? "--" : `${fmtPlain(cur.pop, 1)}M`, "millions"],
+    ["GDP per capita", fmtUsdPc(cur.gdppc), "current USD"],
+    ["Real GDP growth", fmtPct(cur.growth), cur.kind === "bloc" ? "GDP-weighted" : "annual %"],
+    ["Inflation", fmtPct(cur.inflation), cur.kind === "bloc" ? "GDP-weighted, avg CPI" : "avg consumer prices"],
+    ["Govt gross debt", fmtPct(cur.debt), cur.kind === "bloc" ? `% of GDP, GDP-weighted${cur.debtReporting != null && cur.debtReporting < n ? ` (${cur.debtReporting}/${n})` : ""}` : "% of GDP"],
+    ["Fiscal balance", fmtPct(cur.fiscal), "net lending/borrowing, % of GDP"],
+    ["Current account", fmtPct(cur.ca), "% of GDP"],
+    ["Exports / GDP", fmtPct(cur.expPct), "goods, IMF World"],
+    ["Imports / GDP", fmtPct(cur.impPct), "goods, IMF World"],
+    ["FSI total", cur.fsi == null ? "--" : fmtPlain(cur.fsi, 1),
+      cur.fsi == null ? `no FSI edition for ${State.year} in the data` : (cur.kind === "bloc" ? `mean of ${cur.fsiReporting}/${n}, ${State.year} edition` : `${State.year} edition`)],
+  ];
+  document.getElementById("econ-grid").innerHTML = econ.map(([l, v, d]) =>
+    `<div class="econ-card"><div class="lbl">${escapeHTML(l)}</div><div class="val">${v}</div><div class="desc">${escapeHTML(d)}</div></div>`).join("");
+}
+
+function renderMapPanel() {
+  const meta = MAP_METRICS[State.mapMetric];
+  document.getElementById("map-title").textContent = `${meta.label} · ${State.year}`;
+  const rows = DB.ct.filter(r => r.year === State.year).map(r => ({
+    country_iso3: r.country_iso3,
+    country_name: r.country_name,
+    analytical_bloc_code: r.analytical_bloc_code,
+    value: r[meta.col] ?? null,
+  }));
+  const withData = rows.filter(r => r.value != null).length;
+  document.getElementById("map-sub").textContent = withData
+    ? `${withData}/21 countries with data · select a country on the map or in the Country menu`
+    : `No ${meta.label.toLowerCase()} values for ${State.year} · select another year or metric`;
+  State.loadVersion += 1;
+  renderMap(rows, State, meta, State.loadVersion);
+}
+
+function renderPartners() {
+  const key = State.country ? `${State.country}|${State.year}` : `${State.bloc}|${State.year}`;
+  const rows = (State.country ? IDX.partners[key] : IDX.blocPartners[key]) || [];
+  const cur = scopeRow();
+  document.getElementById("partners-title").textContent = `${scopeName()} · top 10 named partners · ${State.year}`;
+  renderPartnerBars(rows, cur?.trade);
+  const note = document.getElementById("partners-note");
+  if (!State.country && cur && cur.topShare == null) {
+    note.textContent = "Shares of World trade are not shown because not every member reports trade this year.";
+  } else {
+    note.textContent = State.country
+      ? "Partners are named economies; IMF regional aggregates are excluded."
+      : "Bloc partners aggregate all members' named partners. Members' combined trade includes trade between members, marked 'member'.";
+  }
+
+  // Dependence trend
+  const series = YEARS.map(y => scopeRowAt(y));
+  document.getElementById("dependence-title").textContent = `${scopeName()} · partner dependence over time`;
+  document.getElementById("dependence-summary").innerHTML = cur ? `
+    <div class="diag-chip"><span class="lbl">Top partner ${State.year}</span><span class="val">${escapeHTML(cur.topPartnerCode ? partnerLabel(cur.topPartnerCode, cur.topPartnerName) : "--")}</span><span class="desc">${fmtPct(cur.topShare)} of World trade</span></div>
+    <div class="diag-chip"><span class="lbl">Top 3 partners</span><span class="val">${fmtPct(cur.top3Share)}</span><span class="desc">of World trade</span></div>
+    <div class="diag-chip"><span class="lbl">Named coverage</span><span class="val">${fmtPct(cur.namedCoverage, 0)}</span><span class="desc">named partners vs World</span></div>` : "";
+  renderLines("dependence-chart", YEARS, [
+    { label: "Top partner share", color: COLORS.warning, values: series.map(s => s?.topShare ?? null) },
+    { label: "Top 3 share", color: COLORS.imports, values: series.map(s => s?.top3Share ?? null) },
+  ], { yTitle: "% of World trade", format: v => fmtPct(v), selectedYear: State.year, yMin: 0 });
+
+  // HHI: bloc-grain lines for all blocs; selected country overlaid
+  const hhiSeries = BLOCS.map(b => ({
+    label: `${b} (bloc)`,
+    color: blocColor(b),
+    width: !State.country && b === State.bloc ? 2.6 : 1.2,
+    values: YEARS.map(y => IDX.bloc[b]?.[y]?.bloc_partner_hhi ?? null),
+  }));
+  if (State.country) {
+    hhiSeries.push({ label: countryName(State.country), color: COLORS.text, width: 2.6,
+      values: YEARS.map(y => IDX.ct[State.country]?.[y]?.total_trade_partner_hhi ?? null) });
+  }
+  renderLines("hhi-chart", YEARS, hhiSeries, { yTitle: "HHI (0–1)", format: v => fmtPlain(v, 3), selectedYear: State.year, yMin: 0 });
+  document.getElementById("hhi-sub").textContent = State.country
+    ? `${countryName(State.country)}: HHI over its named partners. Bloc lines: HHI over members' combined named partners.`
+    : "Bloc lines: HHI over members' combined named partners (includes trade between members). Not a risk rating.";
+
+  // Coverage
+  const covSeries = State.country
+    ? [{ label: countryName(State.country), color: COLORS.text, values: YEARS.map(y => IDX.ct[State.country]?.[y]?.named_partner_coverage_pct ?? null) }]
+    : membersOf(State.bloc, State.year).map(c => ({ label: c, color: seriesColor(c, State.bloc), width: 1.4,
+      values: YEARS.map(y => IDX.ct[c]?.[y]?.named_partner_coverage_pct ?? null) }));
+  renderLines("coverage-chart", YEARS, covSeries, { yTitle: "% of World total", format: v => fmtPct(v, 1), selectedYear: State.year });
+}
+
+function scopeRowAt(year) {
+  const saved = State.year;
+  const row = scopeRow(year);
+  State.year = saved;
+  return row;
+}
+
+function renderExposure() {
+  // Openness: bloc lines (bloc rows; membership changes in 2024 are marked by the cohort note)
+  const openSeries = BLOCS.map(b => ({
+    label: b, color: blocColor(b), width: !State.country && b === State.bloc ? 2.6 : 1.2,
+    values: YEARS.map(y => IDX.bloc[b]?.[y]?.trade_openness_pct_gdp ?? null),
+  }));
+  if (State.country) {
+    openSeries.push({ label: countryName(State.country), color: COLORS.text, width: 2.6,
+      values: YEARS.map(y => IDX.ct[State.country]?.[y]?.trade_openness_pct_gdp ?? null) });
+  }
+  document.getElementById("openness-title").textContent = `Trade openness · ${State.country ? countryName(State.country) + " vs blocs" : "blocs"}`;
+  renderLines("openness-chart", YEARS, openSeries, { yTitle: "% of GDP", format: v => fmtPct(v, 1), selectedYear: State.year, yMin: 0 });
+
+  // Growth index: fixed cohort = selected scope's members in the selected year
+  const cohort = State.country ? [State.country] : membersOf(State.bloc, State.year);
+  const totals = YEARS.map(y => {
+    const vals = cohort.map(c => IDX.ct[c]?.[y]?.total_trade_billions_usd);
+    return vals.some(v => v == null) ? null : vals.reduce((s, v) => s + v, 0);
+  });
+  const base = totals[0];
+  const idx = totals.map(v => (v == null || !base) ? null : v / base * 100);
+  const finite = idx.filter(v => v != null && v > 0);
+  const log = finite.length && Math.max(...finite) / Math.min(...finite) > 15;
+  document.getElementById("growth-title").textContent = `${scopeName()} · goods trade indexed to 1990`;
+  document.getElementById("growth-sub").textContent = `1990 = 100 · nominal USD${log ? " · log scale" : ""}`;
+  document.getElementById("growth-note").textContent = State.country
+    ? "IMF World total for this country. Nominal USD: includes price and exchange-rate effects."
+    : `Fixed cohort: the ${cohort.length} members in ${State.year}, summed across all years. Years where any member lacks data are gaps.`;
+  renderLines("growth-chart", YEARS, [{ label: scopeName(), color: State.country ? COLORS.text : blocColor(State.bloc), values: idx }],
+    { yTitle: "Index", format: v => fmtPlain(v, 0), selectedYear: State.year, log });
+
+  const cur = scopeRow();
+  document.getElementById("exposure-title").textContent = `${scopeName()} · exposure profile · ${State.year}`;
+  const balPct = cur && cur.balance != null && cur.gdp ? cur.balance / cur.gdp * 100 : null;
+  renderBars("exposure-chart", ["Exports", "Imports", "Trade balance"], [{
+    label: "% of GDP",
+    color: [COLORS.exports, COLORS.imports, balPct != null && balPct < 0 ? COLORS.danger : COLORS.success],
+    values: [cur?.expPct ?? null, cur?.impPct ?? null, balPct],
+  }], { xTitle: "% of GDP", format: v => fmtPct(v, 1) });
+}
+
+function renderProductsPanel() {
+  const p = DB.products || {};
+  document.getElementById("products-reason").textContent = p.reason || "Product data unavailable.";
+  document.getElementById("products-steps").innerHTML = (p.revalidation || []).map(s => `<li>${escapeHTML(s)}</li>`).join("");
+}
+
+function renderContext() {
+  const win = DB.prov?.acled?.hotspot_window || [2022, 2024];
+  const members = State.country ? [State.country] : Object.keys(CURRENT_BLOC).filter(c => CURRENT_BLOC[c] === State.bloc);
+  const scope = State.country ? countryName(State.country) : `${State.bloc} (current members)`;
+  if (State.country) {
+    const rows = (IDX.hot[State.country] || []).slice(0, 10);
+    document.getElementById("conflict-title").textContent = `${scope} · conflict hotspots`;
+    document.getElementById("conflict-sub").textContent = `ACLED · first-level admin areas · ${win[0]}–${win[1]} combined`;
+    renderBars("conflict-chart", rows.map(r => r.admin1), [
+      { label: "Violent events", color: COLORS.warning, values: rows.map(r => r.violent_events) },
+      { label: "Fatalities", color: COLORS.danger, values: rows.map(r => r.fatalities) },
+    ], { xTitle: "count", format: v => fmtNumber(v) });
+    const all = IDX.hot[State.country] || [];
+    document.getElementById("conflict-note").textContent =
+      `${all.length} admin areas with events; top ${rows.length} shown, ranked by violent events then fatalities. Violent events = battles, explosions/remote violence, violence against civilians, riots.`;
+  } else {
+    const rows = members.map(c => {
+      const list = IDX.hot[c] || [];
+      return {
+        c,
+        ve: list.reduce((s, r) => s + r.violent_events, 0),
+        fat: list.reduce((s, r) => s + r.fatalities, 0),
+      };
+    }).sort((a, z) => z.ve - a.ve || z.fat - a.fat);
+    document.getElementById("conflict-title").textContent = `${scope} · conflict by country`;
+    document.getElementById("conflict-sub").textContent = `ACLED · ${win[0]}–${win[1]} combined · counts`;
+    renderBars("conflict-chart", rows.map(r => countryName(r.c)), [
+      { label: "Violent events", color: COLORS.warning, values: rows.map(r => r.ve) },
+      { label: "Fatalities", color: COLORS.danger, values: rows.map(r => r.fat) },
+    ], { xTitle: "count", format: v => fmtNumber(v) });
+    document.getElementById("conflict-note").textContent =
+      "Counts, not rates. Per-million rates for the selected year are in the Overview. Violent events = battles, explosions/remote violence, violence against civilians, riots.";
+  }
+
+  const frag = members.map(c => IDX.frag[c]).filter(Boolean);
+  const editions = [...new Set(frag.map(f => f.fsi_year))].sort();
+  document.getElementById("fragility-title").textContent = `${scope} · fragility pillars`;
+  document.getElementById("fragility-sub").textContent = editions.length
+    ? `Fund for Peace FSI · latest edition loaded: ${editions.join(", ")} · independent of the selected year`
+    : "No FSI edition loaded for this scope";
+  const fr = [...frag].sort((a, z) => (z.fsi_total_score ?? 0) - (a.fsi_total_score ?? 0));
+  renderBars("fragility-chart", fr.map(f => `${countryName(f.country_iso3)} (${f.fsi_year})`), [
+    { label: "Cohesion", color: "#c084fc", values: fr.map(f => f.cohesion_score) },
+    { label: "Economic", color: "#60a5fa", values: fr.map(f => f.economic_score) },
+    { label: "Political", color: "#f59e0b", values: fr.map(f => f.political_score) },
+    { label: "Social & cross-cutting", color: "#34d399", values: fr.map(f => f.social_cross_cutting_score) },
+  ], { stacked: true, xTitle: "FSI points", format: v => fmtPlain(v, 1) });
+}
+
+function renderSources() {
+  const p = DB.prov;
+  if (!p) return;
+  const sha = k => (p.raw_inputs?.[k]?.sha256 || "").slice(0, 12);
+  const dates = arr => (arr || []).map(d => String(d).slice(0, 10)).filter((v, i, a) => a.indexOf(v) === i).join(", ");
+  const outliers = (p.source_outliers || []).map(o => `${escapeHTML(countryName(o.country_iso3))} ${o.year} (${fmtPct(o.value, 0)})`).join("; ");
+  const cud = Object.values(p.weo?.country_update_date_by_country || {}).flat();
+  const cudRange = cud.length ? `${cud.sort((a, z) => new Date(a) - new Date(z))[0]} to ${cud[cud.length - 1]}` : "n/a";
+  document.getElementById("sources").innerHTML = `
+    <table class="src-table">
+      <thead><tr><th>Source</th><th>Used for</th><th>Period</th><th>Snapshot</th></tr></thead>
+      <tbody>
+        <tr><td>IMF International Merchandise Trade Statistics (IMTS)</td><td>Goods exports (FOB), imports (CIF), named partners</td><td>${p.years[0]}–${p.years[1]}, annual</td><td>extracted ${dates(p.imts?.extracted_at)} · sha256 ${sha("imts")}</td></tr>
+        <tr><td>IMF World Economic Outlook (WEO)</td><td>GDP, population, growth, inflation, debt, fiscal and current-account balances</td><td>${p.years[0]}–${p.years[1]}, annual</td><td>extracted ${dates(p.weo?.extracted_at)} · country update dates ${escapeHTML(cudRange)} · release vintage ${escapeHTML(p.weo?.release_vintage || "not recorded")} · sha256 ${sha("weo")}</td></tr>
+        <tr><td>ACLED</td><td>Conflict events and fatalities</td><td>from first covered year per country (mostly 1997; Cabo Verde 2020) to ${p.years[1]}</td><td>extracted ${dates(p.acled?.extracted_at_range)} · ${fmtNumber(p.acled?.events)} events · sha256 ${sha("acled")}</td></tr>
+        <tr><td>Fund for Peace, Fragile States Index</td><td>Fragility total and pillars</td><td>editions ${p.fsi?.years?.[0]}–${p.fsi?.years?.[1]}</td><td>extracted ${dates(p.fsi?.extracted_at)} · sha256 ${sha("fsi")}</td></tr>
+        <tr><td>UN Comtrade</td><td>Product (HS2) structure</td><td colspan="2"><b>Quarantined.</b> ${escapeHTML(p.products?.reason || "")}</td></tr>
+      </tbody>
+    </table>
+    <div class="method-grid">
+      <div><h4>Bloc membership</h4><p>${escapeHTML(p.membership_rule)}</p></div>
+      <div><h4>Trade totals and partners</h4><p>${escapeHTML(p.imts?.headline_rule || "")} ${escapeHTML(p.imts?.share_rule || "")} ${escapeHTML(p.imts?.world_minus_named_note || "")}
+        Counterpart codes are classified with the IMF codelist (${escapeHTML(p.imts?.codelist || "")}); former or combined economies seen: ${escapeHTML((p.imts?.historical_or_combined_named_codes_seen || []).join(", ") || "none")}.</p></div>
+      <div><h4>Bloc figures</h4><p>Bloc totals are sums of members' IMF World totals and include trade between members. Openness divides trade by GDP over the same reporting members. Ratios such as debt and growth are GDP-weighted. Each bloc figure states how many members report it, and year-on-year changes are only shown when membership is unchanged.</p></div>
+      <div><h4>Conflict</h4><p>${escapeHTML(p.acled?.coverage_rule || "")} Rates are fatalities (or events) divided by population in millions for the same year. ${escapeHTML(p.acled?.hotspot_rule || "")}</p></div>
+      <div><h4>Fragility</h4><p>FSI values appear only for the edition year they belong to; earlier years are never filled with later editions. The context panel shows each country's latest loaded edition with its year. ${escapeHTML(p.fsi?.note || "")}${(p.fsi_source_inconsistencies || []).length ? ` Source note: ${p.fsi_source_inconsistencies.map(f => `${escapeHTML(f.country_iso3)} ${f.year} indicators sum to ${f.indicator_sum} vs published total ${f.published_total}`).join("; ")}.` : ""}</p></div>
+      <div><h4>Flagged source values</h4><p>Openness above 200% of GDP (kept as published, not corrected): ${outliers || "none"}. Named-partner coverage differs from the World total by more than 2% in ${fmtNumber(p.imts?.country_years_named_coverage_off_by_more_than_2pct)} country-years (see the coverage chart).</p></div>
+    </div>
+    <p class="note">Rebuild: <code>python scripts/offline_rebuild.py --raw-dir &lt;raw snapshots&gt;</code>, then <code>python scripts/check_static_contract.py --raw-dir &lt;raw snapshots&gt;</code>. Data files and derived datasets remain subject to their providers' terms.</p>`;
+}
+
+function render() {
+  syncControls();
+  renderCrumb();
+  renderOverview();
+  renderMapPanel();
+  renderPartners();
+  renderExposure();
+  renderContext();
+}
 
 async function init() {
   try {
     await loadData();
-    State.meta = localMeta();
-    populateYears(State.meta.years || [2024]);
-    populateMetrics(State.meta.map_metrics || []);
-    attachListeners();
-    await loadAll();
-  } catch (error) {
-    console.error(error);
-    toast(`Could not initialize dashboard: ${error.message}`, 10000);
+  } catch (err) {
+    toast(`Could not load dashboard data: ${err.message}`, 15000);
+    return;
   }
+  State.year = YEARS[YEARS.length - 1];
+  populateControls();
+  readUrl();
+  if (!State.country && !membersOf(State.bloc, State.year).length) State.bloc = "ECOWAS";
+  writeUrl(false);
+  attachListeners();
+  renderProductsPanel();
+  renderSources();
+  render();
 }
 
 document.addEventListener("DOMContentLoaded", init);

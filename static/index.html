@@ -3,70 +3,76 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>CEMAC - ECOWAS - AES Trade Observatory</title>
-  <link rel="stylesheet" href="css/styles.css" />
+  <title>CEMAC · ECOWAS · AES Trade Observatory</title>
+  <meta name="description" content="Trade dependence, exposure and context for 21 Central and West African economies, 1990-2024, from IMF, ACLED and Fund for Peace data." />
+  <link rel="stylesheet" href="css/styles.css?v=20261118-r2" />
   <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
 </head>
 <body>
   <main class="dashboard-shell">
-    <header class="toolbar">
-      <div class="bloc-tabs" id="bloc-tabs" role="tablist" aria-label="Bloc">
-        <button class="bloc-btn active" type="button" role="tab" aria-selected="true" data-bloc="CEMAC">CEMAC</button>
-        <button class="bloc-btn" type="button" role="tab" aria-selected="false" data-bloc="ECOWAS">ECOWAS</button>
-        <button class="bloc-btn" type="button" role="tab" aria-selected="false" data-bloc="AES">AES <span class="badge-new">recent</span></button>
-      </div>
-
-      <div class="ctrls">
-        <label class="ctrl-label" for="metric-select">Map metric</label>
-        <select class="ctrl-select" id="metric-select"></select>
-        <label class="ctrl-label" for="year-select">Year</label>
-        <select class="ctrl-select" id="year-select"></select>
-      </div>
+    <header class="page-head">
+      <h1>CEMAC · ECOWAS · AES Trade Observatory</h1>
+      <p class="purpose">How open are 21 Central and West African economies to trade, how concentrated are their partners,
+        and what conflict and fragility context surrounds them? Goods trade from the IMF (1990–2024), macro data from IMF WEO,
+        conflict events from ACLED, fragility scores from the Fund for Peace.</p>
+      <nav class="section-nav" aria-label="Sections">
+        <a href="#section-overview">Overview</a>
+        <a href="#section-partners">Dependence</a>
+        <a href="#section-exposure">Exposure</a>
+        <a href="#section-products">Products</a>
+        <a href="#section-context">Context</a>
+        <a href="#section-sources">Sources &amp; methods</a>
+      </nav>
     </header>
 
-    <div class="crumb" id="crumb"></div>
+    <div class="toolbar" role="region" aria-label="Scope and year">
+      <div class="bloc-tabs" id="bloc-tabs" role="group" aria-label="Bloc">
+        <button class="bloc-btn active" type="button" aria-pressed="true" data-bloc="CEMAC">CEMAC</button>
+        <button class="bloc-btn" type="button" aria-pressed="false" data-bloc="ECOWAS">ECOWAS</button>
+        <button class="bloc-btn" type="button" aria-pressed="false" data-bloc="AES">AES</button>
+      </div>
+      <div class="ctrls">
+        <label class="ctrl-label" for="country-select">Country</label>
+        <select class="ctrl-select" id="country-select"></select>
+        <label class="ctrl-label" for="year-select">Year</label>
+        <select class="ctrl-select" id="year-select"></select>
+        <label class="ctrl-label" for="metric-select">Map</label>
+        <select class="ctrl-select" id="metric-select"></select>
+      </div>
+    </div>
 
-    <section class="row kpi-map" id="section-overview">
+    <div class="crumb" id="crumb" aria-live="polite"></div>
+    <div class="notice" id="cohort-notice" hidden></div>
+
+    <section class="row kpi-map" id="section-overview" aria-labelledby="overview-label">
       <div class="stack">
-        <div class="section-label">Overview</div>
+        <div class="section-label" id="overview-label">Overview <span class="period-chip" id="overview-period"></span></div>
         <div class="kpi-grid">
           <div class="kpi skeleton" id="kpi-trade"></div>
+          <div class="kpi skeleton" id="kpi-open"></div>
           <div class="kpi skeleton" id="kpi-partner"></div>
           <div class="kpi skeleton" id="kpi-hhi"></div>
-          <div class="kpi skeleton" id="kpi-frag"></div>
+          <div class="kpi skeleton" id="kpi-gdp"></div>
           <div class="kpi skeleton" id="kpi-conflict"></div>
-          <div class="kpi skeleton" id="kpi-open"></div>
         </div>
-
-        <div class="mini-section-label">Economic profile</div>
-        <div class="econ-grid">
-          <div class="econ-card skeleton" id="econ-gdp"></div>
-          <div class="econ-card skeleton" id="econ-pop"></div>
-          <div class="econ-card skeleton" id="econ-gdp-pc"></div>
-          <div class="econ-card skeleton" id="econ-growth"></div>
-          <div class="econ-card skeleton" id="econ-inflation"></div>
-          <div class="econ-card skeleton" id="econ-debt"></div>
-          <div class="econ-card skeleton" id="econ-trade-gdp"></div>
-          <div class="econ-card skeleton" id="econ-exports-gdp"></div>
-          <div class="econ-card skeleton" id="econ-imports-gdp"></div>
-          <div class="econ-card note-card" id="econ-note"></div>
-        </div>
+        <div class="mini-section-label">Economic profile <span class="muted-inline">IMF WEO · selected year · latest years may be IMF staff estimates</span></div>
+        <div class="econ-grid" id="econ-grid"></div>
       </div>
 
       <div class="card map-card">
-        <h3 id="map-title">All blocs</h3>
-        <p class="sub" id="map-sub">Click a country to drill in</p>
+        <h3 id="map-title">Map</h3>
+        <p class="sub" id="map-sub">Select a country on the map or with the Country menu</p>
         <div class="map-wrap" id="map-chart">
-          <svg id="map-svg" viewBox="0 0 520 420" role="img" aria-label="Project country map"></svg>
+          <svg id="map-svg" viewBox="0 0 520 420" role="img" aria-label="Map of the 21 project countries"></svg>
           <div class="tooltip" id="map-tooltip"></div>
         </div>
         <div class="map-legend">
           <div class="bloc-legend">
             <span><i style="background:#0f6e56"></i>CEMAC</span>
             <span><i style="background:#185fa5"></i>ECOWAS</span>
-            <span><i style="background:#ba7517"></i>AES recent split</span>
+            <span><i style="background:#ba7517"></i>AES (analytical cohort, 2024)</span>
           </div>
         </div>
       </div>
@@ -74,119 +80,104 @@
 
     <div class="section-divider"></div>
 
-    <section class="section" id="section-partners">
-      <div class="section-label">Trading partners</div>
+    <section class="section" id="section-partners" aria-labelledby="partners-label">
+      <div class="section-label" id="partners-label">Trade dependence <span class="period-chip">IMF IMTS · selected year · goods</span></div>
       <div class="row two">
         <div class="chart-box">
-          <h3 id="partners-title">Top 10 trading partners</h3>
-          <p class="sub" id="partners-sub">Trade value, USD billions · selected year · green = exports, purple = imports</p>
+          <h3 id="partners-title">Top 10 named trading partners</h3>
+          <p class="sub" id="partners-sub">USD billions · imports left, exports right · share of World total trade</p>
           <div class="bar-legend">
-            <span><i class="bar-legend-swatch exp"></i>Exports</span>
             <span><i class="bar-legend-swatch imp"></i>Imports</span>
+            <span><i class="bar-legend-swatch exp"></i>Exports</span>
           </div>
           <div id="partner-bars" class="partner-bars"></div>
+          <p class="note" id="partners-note"></p>
         </div>
-
         <div class="chart-box">
-          <h3 id="partner-dependence-title">Partner dependence diagnostics</h3>
-          <p class="sub" id="partner-dependence-sub">Top partner and top-3 share of total trade</p>
-          <div id="partner-dependence-summary" class="partner-diagnostics"></div>
-          <canvas id="partner-dependence-chart"></canvas>
+          <h3 id="dependence-title">Partner dependence over time</h3>
+          <p class="sub">Top partner and top-3 partners as % of World total trade</p>
+          <div id="dependence-summary" class="partner-diagnostics"></div>
+          <canvas id="dependence-chart"></canvas>
         </div>
       </div>
-    </section>
-
-    <section class="section" id="section-concentration">
-      <div class="section-label">Concentration and regional integration</div>
-      <div class="row analysis-primary">
+      <div class="row two">
         <div class="chart-box">
-          <h3 id="hhi-title">Partner concentration (<abbr title="Herfindahl-Hirschman Index: 0 = fully diversified across many partners, 1 = single-partner monopoly">HHI</abbr>)</h3>
-          <p class="sub" id="hhi-sub">0.15 = diversified · 0.25 = highly concentrated · dashed reference lines shown</p>
+          <h3 id="hhi-title">Partner concentration (<abbr title="Herfindahl-Hirschman index: sum of squared partner shares. 1 = a single partner; values near 0 = trade spread across many partners">HHI</abbr>)</h3>
+          <p class="sub" id="hhi-sub">Computed on all named partners; conditional on how much of World trade is attributed to named partners</p>
           <canvas id="hhi-chart"></canvas>
         </div>
         <div class="chart-box">
-          <h3 id="integration-title">Trade openness trend (% of GDP)</h3>
-          <p class="sub" id="integration-sub">Exports + imports as % of GDP — higher signals greater external trade dependency</p>
-          <canvas id="integration-chart"></canvas>
+          <h3>Named-partner coverage</h3>
+          <p class="sub">Sum of named-partner trade as % of the IMF World total (100% = fully attributed)</p>
+          <canvas id="coverage-chart"></canvas>
+          <p class="note">Differences can be positive or negative. They come from areas the IMF reports as "not specified" and from reporting differences between the World row and partner rows.</p>
         </div>
       </div>
     </section>
 
-    <section class="section" id="section-growth">
-      <div class="section-label">Growth and trade structure</div>
-      <div class="row analysis-secondary">
+    <section class="section" id="section-exposure" aria-labelledby="exposure-label">
+      <div class="section-label" id="exposure-label">Trade exposure <span class="period-chip">IMF IMTS + IMF WEO · nominal current USD</span></div>
+      <div class="row two">
         <div class="chart-box">
-          <h3 id="growth-title">Trade growth indexed to 1990</h3>
-          <p class="sub" id="growth-sub">Base = 100 - nominal USD</p>
+          <h3 id="openness-title">Trade openness</h3>
+          <p class="sub">Goods exports + imports as % of GDP</p>
+          <canvas id="openness-chart"></canvas>
+        </div>
+        <div class="chart-box">
+          <h3 id="growth-title">Goods trade indexed to 1990</h3>
+          <p class="sub" id="growth-sub">1990 = 100 · nominal USD</p>
           <canvas id="growth-chart"></canvas>
-          <p class="note" id="growth-note">Index = total goods trade / 1990 total goods trade * 100. Nominal current USD.</p>
-        </div>
-        <div class="chart-box tree-box">
-          <h3>Trade exposure profile</h3>
-          <p class="sub">Exports, imports, and net trade position as share of GDP</p>
-          <canvas id="exposure-chart"></canvas>
-          <p class="note" id="exposure-note"></p>
+          <p class="note" id="growth-note"></p>
         </div>
       </div>
-    </section>
-
-    <section class="section" id="section-products">
-      <div class="section-label">Product trade structure</div>
       <div class="chart-box">
-        <div class="products-header">
-          <div>
-            <h3 id="products-title">Top export sectors</h3>
-            <p class="sub" id="products-sub">UN Comtrade · trade value, USD billions · reporter-submitted data only</p>
-          </div>
-          <div class="flow-toggle" id="flow-toggle">
-            <button class="flow-btn active" data-flow="export" type="button">Exports</button>
-            <button class="flow-btn" data-flow="import" type="button">Imports</button>
-          </div>
-        </div>
-        <div id="products-treemap" class="products-treemap"></div>
-        <div id="products-empty" class="empty-state product-empty" hidden></div>
-        <p class="note" id="products-note"></p>
+        <h3 id="exposure-title">Exposure profile</h3>
+        <p class="sub">Exports, imports and trade balance as % of GDP, selected year</p>
+        <canvas id="exposure-chart" class="short-canvas"></canvas>
       </div>
     </section>
 
-    <section class="section" id="section-operational">
-      <div class="section-label">Operational context</div>
-      <div class="row context-row">
+    <section class="section" id="section-products" aria-labelledby="products-label">
+      <div class="section-label" id="products-label">Product structure</div>
+      <div class="chart-box quarantine" id="products-box">
+        <h3>UN Comtrade product data: under revalidation</h3>
+        <p id="products-reason"></p>
+        <ol id="products-steps"></ol>
+      </div>
+    </section>
+
+    <section class="section" id="section-context" aria-labelledby="context-label">
+      <div class="section-label" id="context-label">Context · latest snapshot <span class="period-chip">current membership, not the selected year</span></div>
+      <div class="row two">
         <div class="chart-box">
-          <h3 id="conflict-title">Conflict events &amp; fatalities</h3>
-          <p class="sub" id="conflict-sub"><abbr title="Armed Conflict Location &amp; Event Data Project">ACLED</abbr> · latest 3-year hotspot window</p>
+          <h3 id="conflict-title">Conflict events and fatalities</h3>
+          <p class="sub" id="conflict-sub"></p>
           <canvas id="conflict-chart"></canvas>
+          <p class="note" id="conflict-note"></p>
         </div>
-
         <div class="chart-box">
-          <h3>Fragility components</h3>
-          <p class="sub"><abbr title="Fund for Peace Fragile States Index: 0 = most stable, 120 = most fragile">FSI</abbr> · pillar scores, latest available</p>
+          <h3 id="fragility-title">Fragility pillars</h3>
+          <p class="sub" id="fragility-sub"></p>
           <canvas id="fragility-chart"></canvas>
-        </div>
-
-        <div class="chart-box">
-          <h3 id="risk-title">Macro-fiscal diagnostics</h3>
-          <p class="sub" id="risk-sub">Six observed indicators normalised 0–100 · not a credit rating or debt sustainability assessment</p>
-          <canvas id="risk-chart"></canvas>
+          <p class="note">Fund for Peace pillar sums (each 0–30; total 0–120, higher = more fragile). Shown without risk labels.</p>
         </div>
       </div>
     </section>
 
-    <section class="section" id="section-health">
-      <div class="section-label">Pipeline health</div>
-      <div class="health-grid" id="health-grid"></div>
+    <section class="section" id="section-sources" aria-labelledby="sources-label">
+      <div class="section-label" id="sources-label">Sources &amp; methods</div>
+      <div class="sources" id="sources"></div>
     </section>
 
     <footer class="dash-footer">
-      CEMAC - ECOWAS - AES Trade Observatory · Nathan Thomas Gatse ·
+      CEMAC · ECOWAS · AES Trade Observatory · Nathan Thomas Gatse ·
       <a href="https://github.com/mintyfizz/cemac-ecowas-aes-trade-observatory" target="_blank" rel="noopener">GitHub: mintyfizz</a>
-      · IMF IMTS/DOTS 1990-2024 · IMF WEO · ACLED · Fund for Peace FSI
     </footer>
   </main>
 
   <div class="toast" id="toast" role="alert" aria-live="assertive"></div>
 
-  <script src="js/charts.js?v=20260527-chart-corrections"></script>
-  <script src="js/app_static.js?v=20260527-chart-corrections"></script>
+  <script src="js/charts.js?v=20261118-r2"></script>
+  <script src="js/app_static.js?v=20261118-r2"></script>
 </body>
 </html>
