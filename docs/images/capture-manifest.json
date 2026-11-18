@@ -1,0 +1,26 @@
+[
+  {
+    "file": "overview-ecowas-2024.jpg",
+    "source_url": "https://cemac-ecowas-aes-trade-observatory.vercel.app/?bloc=ECOWAS&year=2024",
+    "source_commit": "55b30961a055411bcfb3ffa3893dab0df7462e0d",
+    "captured_date": "2026-11-18",
+    "sha256": "d86ad8840045c22942b472671abd6bf7330ddcf4e40d4e5520521ed3b00930fa",
+    "bytes": 123123
+  },
+  {
+    "file": "trade-dependence-ecowas-2024.jpg",
+    "source_url": "https://cemac-ecowas-aes-trade-observatory.vercel.app/?bloc=ECOWAS&year=2024#section-partners",
+    "source_commit": "55b30961a055411bcfb3ffa3893dab0df7462e0d",
+    "captured_date": "2026-11-18",
+    "sha256": "e8b65a71015d6d6de969ceb1c82770bca8ddc992b69f047c24efc31efac848c7",
+    "bytes": 74611
+  },
+  {
+    "file": "trade-exposure-nigeria-2024.jpg",
+    "source_url": "https://cemac-ecowas-aes-trade-observatory.vercel.app/?bloc=ECOWAS&year=2024&country=NGA#section-exposure",
+    "source_commit": "55b30961a055411bcfb3ffa3893dab0df7462e0d",
+    "captured_date": "2026-11-18",
+    "sha256": "31ad3bddb1c4c89dca04a0f154e0df28fe654576984e92bfa5a8d8a3aae01314",
+    "bytes": 85165
+  }
+]

@@ -1,88 +1,94 @@
-# CEMAC-ECOWAS-AES Trade Observatory
+# CEMAC · ECOWAS · AES Trade Observatory
 
-[![Deploy static dashboard to GitHub Pages](https://github.com/mintyfizz/cemac-ecowas-aes-trade-observatory/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/mintyfizz/cemac-ecowas-aes-trade-observatory/actions/workflows/deploy-pages.yml)
+Explore goods trade, partner dependence, economic exposure, conflict and fragility across **21 Central and West African countries**, with annual trade and macroeconomic views for **1990–2024**.
 
-A Databricks lakehouse and static public dashboard for tracking trade flows,
-partner dependence, macro-fiscal exposure, conflict, and fragility across
-CEMAC, ECOWAS, and the Alliance of Sahel States (AES).
+**[Open the live dashboard →](https://cemac-ecowas-aes-trade-observatory.vercel.app/)**  ·  [Methodology](docs/methodology.md)  ·  [Run locally](#run-locally)  ·  [Validation](#validation)
 
-**Live dashboard:** <https://mintyfizz.github.io/cemac-ecowas-aes-trade-observatory/>
+[![Dashboard checks and GitHub Pages deployment](https://github.com/mintyfizz/cemac-ecowas-aes-trade-observatory/actions/workflows/deploy-pages.yml/badge.svg)](https://github.com/mintyfizz/cemac-ecowas-aes-trade-observatory/actions/workflows/deploy-pages.yml)
 
-The public dashboard is hosted on GitHub Pages. There is no public backend and
-no runtime secret in the browser. The site reads JSON files under `static/data/`,
-rebuilt deterministically from preserved raw source snapshots
-(`scripts/offline_rebuild.py`) and checked by exact-identity contract tests
-before deployment.
+[![ECOWAS 2024 overview: six headline indicators, reporting coverage and a map of trade openness across the 21 project countries.](docs/images/overview-ecowas-2024.jpg)](https://cemac-ecowas-aes-trade-observatory.vercel.app/?bloc=ECOWAS&year=2024)
 
-> **November 2026 data revision.** Trade totals in the May 2026 export were
-> inflated about 4.6–5.1× (IMF aggregate areas summed as partners), conflict
-> rates were 10⁶ too small, and hotspots were duplicated for the AES members.
-> UN Comtrade product values are quarantined pending revalidation. See
-> [docs/methodology.md](docs/methodology.md) for the defects, fixes and rules.
+*ECOWAS, 2024. The overview pairs headline indicators with an interactive country map and explicitly explains the analytical AES membership rule.*
 
-## What This Project Demonstrates
+## Explore the dashboard
 
-- A medallion lakehouse pipeline on Databricks using bronze, silver, and gold
-  Delta tables.
-- Multi-source reconciliation across IMF trade, IMF macroeconomic data, UN
-  Comtrade product data, ACLED conflict data, and Fund for Peace FSI data.
-- Time-aware analytical bloc membership, including the recent AES split.
-- Contract-checked static exports for a dashboard that can be opened from a
-  fresh clone without Databricks access.
-- Clear interpretation rules for incomplete product coverage, latest-available
-  fragility data, and snapshot panels.
+- **Start with a bloc, country and year.** Compare goods trade, openness, GDP, partner concentration and conflict fatalities per million. Coverage badges show which members contribute.
+- **Investigate dependence and exposure.** Inspect imports, exports, signed balances and partner shares; compare historical openness and a fixed-cohort trade index.
+- **Read the context with its date.** Conflict and fragility panels identify their observation windows. Sources, definitions and unresolved differences are visible in the dashboard.
 
-## Dashboard Surface
+The URL preserves `bloc`, `year`, `country` and `metric`, so a selected view can be shared directly. The dashboard is static: it reads committed JSON, with no public backend or browser secrets.
 
-| Area | What it answers |
-| --- | --- |
-| Overview | For a bloc or country and year: goods trade (IMF World), openness, top partner share, partner concentration, GDP, conflict fatalities per million, and observed IMF WEO indicators with units. Bloc figures state how many members report. |
-| Map | One selected metric for all 21 countries in the selected year. A keyboard-accessible Country menu offers the same drill-down. |
-| Trade dependence | Top named partners (share of World trade), top-partner and top-3 shares over time, HHI over named partners, and named-partner coverage of the World total. |
-| Trade exposure | Openness trend, goods trade indexed to 1990 for a fixed member cohort, and the exports/imports/balance profile. |
-| Product structure | UN Comtrade HS2 data, quarantined with the reason and the revalidation steps. |
-| Context (latest snapshot) | ACLED hotspots for 2022–2024 combined, and the latest loaded Fund for Peace FSI edition with its year. Uses current membership, not the selected year. |
-| Sources and methods | Source periods, snapshot dates and hashes, membership rule, definitions and flagged source values. |
+### Who are the trading partners?
 
-The URL keeps `bloc`, `year`, `country` and `metric`, so views are shareable and
-back/forward navigation works.
+[![ECOWAS 2024 named partners: import and export bars with signed trade balances, alongside top-partner and top-three dependence over time.](docs/images/trade-dependence-ecowas-2024.jpg)](https://cemac-ecowas-aes-trade-observatory.vercel.app/?bloc=ECOWAS&year=2024#section-partners)
 
-## Interpretation Rules
+*Partner shares use IMF World trade as the denominator. The chart preserves the UAE deficit of $123.8 million and marks the 2024 membership break in the historical series.*
 
-These are enforced by `scripts/check_static_contract.py`. Full definitions are
-in [docs/methodology.md](docs/methodology.md).
+### How does a country compare?
 
-- **Totals are IMF World rows.** Partner rows are named economies from a
-  reviewed codelist. Aggregates are excluded, and "not specified" areas count as
-  unallocated. World minus the named-partner sum is shown as a signed difference.
-- **One HHI definition.** HHI is computed over the full named-partner
-  distribution before any top-N cut. Bloc HHI is computed at bloc grain. It is
-  conditional on named-partner coverage, and no risk verdicts are attached.
-- **Analytical AES cohort.** Burkina Faso, Mali and Niger are grouped as AES from
-  the AES confederation treaty (6 July 2024). Their legal ECOWAS exit took effect
-  on 29 January 2025. This is labelled in the UI and is not a legal-membership
-  claim.
-- **No look-ahead.** FSI values appear only for their own edition year. The
-  latest edition is shown separately with its date.
-- **Rates are exact identities.** rate = count / population in millions for the
-  same year. Population is stored in persons.
-- **Missing stays missing.** Nulls are never rendered as zero. ACLED years before
-  a country's coverage starts are null.
-- **Quarantine over invention.** Product values that cannot be validated are not
-  published.
+[![Nigeria 2024 trade exposure: historical openness against regional blocs, a nominal goods-trade index, and exports, imports and balance as percentages of GDP.](docs/images/trade-exposure-nigeria-2024.jpg)](https://cemac-ecowas-aes-trade-observatory.vercel.app/?bloc=ECOWAS&year=2024&country=NGA#section-exposure)
 
-## Pipeline Architecture
+*Nigeria, 2024. Openness and the exposure profile are percentages of GDP; the trade index is in nominal USD and includes price and exchange-rate effects.*
 
-```text
-External sources
-  -> bronze Delta tables
-  -> silver reconciled facts and dimensions
-  -> gold dashboard marts
-  -> static/data/*.json
-  -> GitHub Pages dashboard
+Screenshots were captured from the public Vercel dashboard on **18 November 2026**. Their dates identify the capture, not a new source-data release. [Capture record](docs/images/README.md).
+
+## Data and limitations
+
+| Source | Dashboard use | Current coverage / status |
+| --- | --- | --- |
+| IMF International Merchandise Trade Statistics (IMTS / DOTS) | Goods totals, bilateral partners and concentration | Annual 1990–2024; World rows for headline totals. |
+| IMF World Economic Outlook | GDP, population and macro-fiscal indicators | Annual 1990–2024; source-release vintage was not recorded in the preserved snapshot. |
+| ACLED | Conflict events and fatalities | Saved events through 2024; context combines 2022–2024. The first observed event year is a coverage heuristic, not confirmed provider coverage. |
+| Fund for Peace, Fragile States Index | Fragility total and components | Editions 2006–2023 loaded; latest context is explicitly dated. |
+| UN Comtrade | Planned HS2 product structure | **Quarantined** until re-extraction reconciles with matched same-provider totals. |
+
+The preserved raw snapshots were extracted in **May 2026**. This is a historical observatory, not a live data feed.
+
+> **November 2026 correction.** The reviewed release replaces inflated aggregate-based trade totals with IMF World rows, repairs population-scaled conflict rates, consolidates duplicated hotspots, and uses matched reporting countries for ratios. Earlier Comtrade product values did not reconcile; dropped breakdown dimensions are a suspected cause, not an established one. See the [methodology and remaining work](docs/methodology.md).
+
+### Interpretation rules
+
+- **Official totals stay intact.** Named partners can differ from the World total; coverage and signed differences remain visible.
+- **Concentration has a stated universe.** HHI uses the full named-partner distribution before ranking. It is conditional on named-partner coverage and is not a risk rating.
+- **Comparisons use matching contributors.** Bloc ratios use the same countries in numerator and denominator. Year-on-year changes are suppressed when membership or reporting contributors change.
+- **Membership is analytical.** Burkina Faso, Mali and Niger form the AES cohort from 2024, based on the 6 July 2024 confederation. Legal ECOWAS withdrawal took effect on 29 January 2025; the dashboard distinguishes these dates.
+- **Missing values remain unavailable.** Pre-coverage conflict years are not zero, and FSI values are never carried backward into earlier years.
+- **Historical ambiguity stays visible.** Former and successor partner codes sometimes coexist. Values are preserved and flagged rather than removed or redistributed on an assumption.
+
+## Run locally
+
+No Databricks account or package installation is needed to preview the committed dashboard. Use Python 3 to serve it:
+
+```bash
+git clone https://github.com/mintyfizz/cemac-ecowas-aes-trade-observatory.git
+cd cemac-ecowas-aes-trade-observatory
+python3 -m http.server 8080 --directory static
 ```
 
-The Databricks catalog is `cemac_ecowas_aes_trade`.
+Open [localhost:8080](http://localhost:8080). Chart.js, D3 and TopoJSON load from a CDN, so rendering the dashboard requires an internet connection.
+
+## Architecture and deployment
+
+The current public release uses an offline, reproducible data build:
+
+```text
+Preserved IMF / ACLED / FSI raw snapshots
+  → scripts/offline_rebuild.py
+  → committed static/data/*.json + provenance
+  → static HTML / CSS / JavaScript dashboard
+  → Vercel production + GitHub Pages mirror
+```
+
+**Production:** [cemac-ecowas-aes-trade-observatory.vercel.app](https://cemac-ecowas-aes-trade-observatory.vercel.app/)
+
+**Mirror:** [GitHub Pages](https://mintyfizz.github.io/cemac-ecowas-aes-trade-observatory/)
+
+Vercel serves the `static/` directory as a static site; no install or application build step is required. The GitHub Pages workflow validates the committed output before publishing the same directory. Branch and pull-request checks run separately in `.github/workflows/checks.yml`.
+
+The repository also contains a Databricks bronze → silver → gold lakehouse in catalog `cemac_ecowas_aes_trade`. **The corrected notebooks still need a Databricks rerun and output reconciliation.** The legacy export is guarded and excluded from the current GitHub Pages workflow; unverified gold tables do not replace the reviewed static data.
+
+<details>
+<summary>Databricks table reference</summary>
 
 ### Bronze
 
@@ -128,156 +134,57 @@ The Databricks catalog is `cemac_ecowas_aes_trade`.
 | `gold.dashboard_bloc_comparison` | Bloc comparison and trade openness trend. |
 | `gold.product_trade_hs2` | HS2 export/import product structure. |
 
-## Data Sources
+</details>
 
-| Source | Used for | Notes |
-| --- | --- | --- |
-| IMF IMTS / DOTS | Bilateral goods trade by reporter, partner, and year | Primary source for partner-dependence layer. |
-| UN Comtrade | HS2 product trade structure | Quarantined since Nov 2026: earlier values summed breakdown slices. Revalidation must match same-provider TOTALs. |
-| IMF World Economic Outlook | GDP and macro-fiscal indicators | Includes a CI scale anchor for Nigeria GDP to catch unit errors. |
-| ACLED | Conflict events and fatalities | Operational context, latest loaded hotspot window. |
-| Fund for Peace FSI | Fragility total and component scores | Latest available coverage through 2023 in the current export. |
-| World Bank Data360 | Engineering demonstration | Kept as a bronze reachability/time-travel example, not a dashboard source. |
+## Validation
 
-## Country And Bloc Scope
-
-The project covers 21 countries.
-
-| Dashboard scope | Countries |
-| --- | --- |
-| CEMAC | Cameroon, Central African Republic, Chad, Congo, Equatorial Guinea, Gabon |
-| ECOWAS current non-AES members | Benin, Cabo Verde, Cote d'Ivoire, Gambia, Ghana, Guinea, Guinea-Bissau, Liberia, Nigeria, Senegal, Sierra Leone, Togo |
-| AES | Mali, Burkina Faso, Niger |
-
-Historically, AES members are treated as ECOWAS members before the 2024 split
-for annual time-series panels. Latest snapshot panels show them under AES.
-
-## Static Deployment
-
-```text
-push to main
-  -> .github/workflows/deploy-pages.yml
-  -> node --check static/js/*.js
-  -> scripts/check_static_contract.py        (exact identities)
-  -> scripts/test_contract_mutations.py      (known defects must be caught)
-  -> upload static/ to GitHub Pages
-```
-
-Other branches run the same checks without deploying
-(`.github/workflows/checks.yml`). The Databricks export step is out of the
-deploy path until the corrected notebooks have been rerun (see
-docs/methodology.md).
-
-## Local Preview
-
-```bash
-python -m http.server 8080 --directory static
-```
-
-Open <http://localhost:8080>.
-
-## Rebuilding the Data
-
-From preserved raw extractor snapshots, with no network and no Databricks:
-
-```bash
-python scripts/offline_rebuild.py --raw-dir <raw snapshot dir>
-python scripts/check_static_contract.py --raw-dir <raw snapshot dir>
-python scripts/test_contract_mutations.py
-```
-
-The same inputs produce byte-identical outputs; the contract check verifies
-this.
-
-## Repository Map
-
-```text
-.
-├── 00_setup_catalog.ipynb
-├── 01_network_test.ipynb
-├── 02_bronze_data360_first_pull.ipynb
-├── 03_bronze_comtrade_extract.ipynb
-├── 04_bronze_imts_extract.ipynb
-├── 05_bronze_acled_extract.ipynb
-├── 06_bronze_imf_weo_extract.ipynb
-├── 07_bronze_fsi_extract.ipynb
-├── 08_silver_country_dimensions.ipynb
-├── 09_silver_macro_annual.ipynb
-├── 10_silver_trade_partner_annual.ipynb
-├── 10b_silver_comtrade_normalize.ipynb
-├── 11_silver_acled_conflict.ipynb
-├── 12_silver_fsi_annual.ipynb
-├── 13_audit_cross_source_coverage.ipynb
-├── 14_gold_dashboard_core_marts.ipynb
-├── 15_gold_dashboard_panel_marts.ipynb
-├── docs/
-│   ├── methodology.md
-│   ├── dashboard_data_audit.md   (superseded May 2026 audit)
-│   └── decisions/
-│       ├── ADR-001-extraction-architecture.md
-│       ├── ADR-002-bilateral-trade-source.md
-│       └── ADR-003-comtrade-product-structure.md
-├── extraction/
-│   ├── README.md
-│   └── extract/
-│       ├── acled_extract.py
-│       ├── comtrade_extract.py
-│       ├── fsi_extract.py
-│       ├── imf_dots_extract.py
-│       ├── imf_weo_extract.py
-│       └── tradingeconomics_trade_page_extract.py
-├── config/
-│   ├── imf_cl_imts_country_1.0.0.tsv
-│   ├── imts_counterpart_roles.csv
-│   └── iso3166_alpha3.csv
-├── scripts/
-│   ├── observatory_definitions.py
-│   ├── offline_rebuild.py
-│   ├── check_static_contract.py
-│   ├── test_contract_mutations.py
-│   ├── _dbx_config.py
-│   ├── audit_dashboard_data.py
-│   ├── databricks_sql.py
-│   ├── export_static.py
-│   ├── load_comtrade_silver.py
-│   ├── load_weo_silver.py
-│   ├── rebuild_gold_dashboard.py
-│   └── validate_dashboard_contract.py
-├── static/
-│   ├── index.html
-│   ├── css/styles.css
-│   ├── js/app_static.js
-│   ├── js/charts.js
-│   └── data/*.json
-├── .github/workflows/deploy-pages.yml
-├── databricks.yml
-└── requirements.txt
-```
-
-## Validation Commands
+With Python 3 and Node.js installed:
 
 ```bash
 node --check static/js/charts.js
 node --check static/js/app_static.js
-python scripts/check_static_contract.py
-python scripts/test_contract_mutations.py
+node --test scripts/test_partner_bars.cjs
+python3 scripts/check_static_contract.py
+python3 scripts/test_contract_mutations.py
 ```
 
-## License
+The reviewed release passed **51,227 contract checks**, including a byte-identical raw rebuild on macOS, and caught **all 11 injected defects**. Five renderer tests cover real signed balances, small values, missing values, zeros and proportional bars. Independent source checks and browser verification are recorded in [PR #2](https://github.com/mintyfizz/cemac-ecowas-aes-trade-observatory/pull/2).
 
-This project is released under the [MIT License](LICENSE).
+To rebuild from preserved raw extractor files (not included in a fresh clone):
 
-The MIT License applies to original code, notebooks, scripts, and
-documentation in this repository. Data files and derived datasets remain
-subject to the terms of their original providers.
+```bash
+python3 scripts/offline_rebuild.py --raw-dir <raw-snapshot-directory>
+python3 scripts/check_static_contract.py --raw-dir <raw-snapshot-directory>
+```
 
-## Author
+The raw contract check verifies that the same inputs reproduce the committed JSON bytes. Rebuilding uses no network and requires no Databricks connection.
 
-Nathan Thomas Gatse - International Business and Data Science, Protection &
-Security - Thomas More University of Applied Sciences, Belgium.
+## Repository guide
 
-This is the second project in a planned series of African regional data
-infrastructure work. The first project focused on digital readiness indicators
-across CEMAC. This project extends that work into a lakehouse architecture with
-multi-source reconciliation, analytical bloc membership, and a static public
-dashboard.
+| Path | Purpose |
+| --- | --- |
+| `static/` | Public dashboard and validated JSON datasets. |
+| `scripts/` | Offline rebuild, contract checks, renderer tests and guarded Databricks utilities. |
+| `config/` | Pinned IMF counterpart taxonomy and country codes. |
+| `extraction/` | Source extractors and ingestion instructions. |
+| `00_*.ipynb` … `15_*.ipynb` | Databricks setup, ingestion, transformation, audit and mart notebooks. |
+| `docs/methodology.md` | Definitions, source limitations, corrections and remaining work. |
+| `docs/decisions/` | Architecture and source-selection decisions. |
+| `docs/images/` | Screenshots of the public dashboard and capture provenance. |
+| `.github/workflows/` | Contract checks and GitHub Pages publishing. |
+
+## Country scope
+
+| Dashboard scope | Countries |
+| --- | --- |
+| CEMAC | Cameroon, Central African Republic, Chad, Congo, Equatorial Guinea, Gabon |
+| ECOWAS current non-AES members | Benin, Cabo Verde, Côte d’Ivoire, Gambia, Ghana, Guinea, Guinea-Bissau, Liberia, Nigeria, Senegal, Sierra Leone, Togo |
+| AES | Burkina Faso, Mali, Niger |
+
+Historical annual panels group the three AES countries under ECOWAS before 2024. Latest-snapshot panels use current analytical membership.
+
+## Author and license
+
+**Nathan Thomas Gatse** · Thomas More University of Applied Sciences, Belgium.
+
+Original code, notebooks, scripts and documentation use the [MIT License](LICENSE). Source data and derived datasets remain subject to their providers’ terms.
