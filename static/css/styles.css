@@ -600,7 +600,7 @@ button, select {
   height: 10px;
   background: var(--imports);
   border-radius: 3px 0 0 3px;
-  min-width: 3px;
+  min-width: 0;
   opacity: 0.85;
 }
 
@@ -615,7 +615,7 @@ button, select {
   height: 10px;
   background: var(--exports);
   border-radius: 0 3px 3px 0;
-  min-width: 3px;
+  min-width: 0;
   opacity: 0.85;
 }
 

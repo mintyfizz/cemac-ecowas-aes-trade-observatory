@@ -54,6 +54,8 @@ jobs:
 
       - name: Exact-identity contract checks on static data
         run: python scripts/check_static_contract.py
+      - name: Partner chart display regressions
+        run: node --test scripts/test_partner_bars.cjs
 
       - name: Contract checks catch known defects
         run: python scripts/test_contract_mutations.py

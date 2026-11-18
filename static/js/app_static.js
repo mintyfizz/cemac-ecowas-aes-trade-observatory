@@ -445,7 +445,7 @@ function renderPartners() {
   const rows = (State.country ? IDX.partners[key] : IDX.blocPartners[key]) || [];
   const cur = scopeRow();
   document.getElementById("partners-title").textContent = `${scopeName()} · top 10 named partners · ${State.year}`;
-  renderPartnerBars(rows, cur?.trade);
+  renderPartnerBars(rows);
   const note = document.getElementById("partners-note");
   if (!State.country && cur && cur.topShare == null) {
     note.textContent = "Shares of World trade are not shown because not every member reports trade this year.";

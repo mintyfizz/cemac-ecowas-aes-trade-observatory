@@ -416,7 +416,7 @@ function partnerLabel(code, sourceName) {
 }
 
 // Partner bars: imports left, exports right; share is always of World total trade.
-function renderPartnerBars(rows, scopeTotalB) {
+function renderPartnerBars(rows) {
   const el = document.getElementById("partner-bars");
   if (!el) return;
   if (!rows || !rows.length) {
@@ -425,26 +425,35 @@ function renderPartnerBars(rows, scopeTotalB) {
   }
   const top10 = rows.slice(0, 10);
   const maxSide = Math.max(
-    ...top10.map(r => Math.max(Number(r.exports_billions_usd) || 0, Number(r.imports_billions_usd) || 0)),
-    1e-9
+    ...top10.flatMap(r => [numericOrNull(r.exports_billions_usd), numericOrNull(r.imports_billions_usd)])
+      .filter(value => value !== null),
+    0
   );
+  const widthPct = value => value === null || maxSide === 0 ? 0 : value / maxSide * 100;
+  const preciseUsd = value => value === null ? "unavailable" : (value * 1e9).toLocaleString("en-US", {
+    style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
   el.innerHTML = top10.map(row => {
-    const exp = Number(row.exports_billions_usd) || 0;
-    const imp = Number(row.imports_billions_usd) || 0;
-    const balance = exp - imp;
+    const exp = numericOrNull(row.exports_billions_usd);
+    const imp = numericOrNull(row.imports_billions_usd);
+    const balance = exp === null || imp === null ? null : exp - imp;
     const share = row.share_of_world_total_pct;
-    const expPct = Math.max(1.5, (exp / maxSide) * 100).toFixed(2);
-    const impPct = Math.max(1.5, (imp / maxSide) * 100).toFixed(2);
-    const tol = Math.max(0.0005, (scopeTotalB || 0) * 0.001);
-    const balClass = balance > tol ? "surplus" : balance < -tol ? "deficit" : "balanced";
-    const balLabel = Math.abs(balance) < tol ? "≈0" : (balance > 0 ? "+" : "") + shortMoneyB(balance);
+    const expPct = widthPct(exp);
+    const impPct = widthPct(imp);
+    const balClass = balance > 0 ? "surplus" : balance < 0 ? "deficit" : "balanced";
+    // Keep small nonzero balances visible instead of rounding them to $0.00B.
+    const magnitude = Math.abs(balance);
+    const balLabel = balance === null ? "unavailable" : balance === 0 ? "$0" :
+      (balance < 0 ? "-" : "+") + (magnitude < 0.005
+        ? `$${(magnitude * 1e9).toLocaleString("en-US", { maximumSignificantDigits: 6 })}`
+        : shortMoneyB(magnitude));
     const name = escapeHTML(partnerLabel(row.counterpart_code, row.counterpart_name));
     const flags = [
       row.counterpart_in_same_bloc ? "member of this bloc" : null,
       row.counterpart_historical_or_combined ? "former/combined economy" : null,
     ].filter(Boolean).join(", ");
     return `
-      <div class="dbar-row" title="${name}${flags ? ` (${escapeHTML(flags)})` : ""} · balance ${balLabel} · ${fmtPct(share)} of World total trade">
+      <div class="dbar-row" title="${name}${flags ? ` (${escapeHTML(flags)})` : ""} · imports ${preciseUsd(imp)} · exports ${preciseUsd(exp)} · balance ${preciseUsd(balance)} · ${fmtPct(share)} of World total trade">
         <div class="dbar-imp-val">${shortMoneyB(imp)}</div>
         <div class="dbar-imp-track"><div class="dbar-imp-fill" style="width:${impPct}%"></div></div>
         <div class="dbar-center">
