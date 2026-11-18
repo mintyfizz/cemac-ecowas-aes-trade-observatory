@@ -345,7 +345,7 @@ function renderCrumb() {
     document.getElementById("back-btn").addEventListener("click", () => selectCountry(null));
   } else {
     const m = membersOf(State.bloc, yr);
-    el.innerHTML = `<b>${escapeHTML(BLOC_LABEL[State.bloc])}</b><span class="crumb-sep">·</span>${yr}<span class="crumb-sep">·</span>${m.length} member${m.length === 1 ? "" : "s"}: ${m.map(c => escapeHTML(countryName(c))).join(", ")}`;
+    el.innerHTML = `<b>${escapeHTML(BLOC_LABEL[State.bloc])}</b><span class="crumb-sep">·</span>${yr}<span class="crumb-sep">·</span>${m.length} member${m.length === 1 ? "" : "s"}: ${m.map(c => countryName(c)).sort((a, z) => a.localeCompare(z)).map(escapeHTML).join(", ")}`;
   }
   const notice = document.getElementById("cohort-notice");
   const showCohort = State.year >= 2024 && (State.bloc === "AES" || State.bloc === "ECOWAS" || AES_MEMBERS.includes(State.country));

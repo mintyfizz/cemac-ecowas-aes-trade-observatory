@@ -9,9 +9,16 @@ CEMAC, ECOWAS, and the Alliance of Sahel States (AES).
 **Live dashboard:** <https://mintyfizz.github.io/cemac-ecowas-aes-trade-observatory/>
 
 The public dashboard is hosted on GitHub Pages. There is no public backend and
-no runtime secret in the browser. The site reads pre-exported JSON files under
-`static/data/`; GitHub Actions refreshes those files from Databricks gold tables
-for each Pages deployment.
+no runtime secret in the browser. The site reads JSON files under `static/data/`,
+rebuilt deterministically from preserved raw source snapshots
+(`scripts/offline_rebuild.py`) and checked by exact-identity contract tests
+before deployment.
+
+> **November 2026 data revision.** Trade totals in the May 2026 export were
+> inflated about 4.6–5.1× (IMF aggregate areas summed as partners), conflict
+> rates were 10⁶ too small, and hotspots were duplicated for the AES members.
+> UN Comtrade product values are quarantined pending revalidation. See
+> [docs/methodology.md](docs/methodology.md) for the defects, fixes and rules.
 
 ## What This Project Demonstrates
 
@@ -29,42 +36,40 @@ for each Pages deployment.
 
 | Area | What it answers |
 | --- | --- |
-| Map and overview | Which countries/blocs have the largest trade, GDP, openness, partner concentration, conflict burden, or fragility score in a selected year? |
-| Economic profile | What does the selected country or bloc look like across GDP, population, debt, inflation, fiscal balance, current account, and trade intensity? |
-| Trading partners | Which named country partners dominate trade, and how concentrated is dependence on the top partner and top three partners? |
-| Partner concentration | How concentrated is partner trade over time, measured with HHI? Bloc HHI is computed from aggregated partner shares, not a weighted average of member HHIs. |
-| Trade openness | How large are exports plus imports relative to GDP over time? |
-| Growth and exposure | How has total trade grown since 1990, and how exposed is the selected scope through exports, imports, and trade balance as shares of GDP? |
-| Product structure | Which HS2 sectors dominate exports or imports where UN Comtrade coverage is sufficient? |
-| Operational context | Where are conflict hotspots, how do latest-available FSI components compare, and what macro-fiscal pressures stand out? |
-| Pipeline health | Which rows, years, countries, and source caveats are present in the static export? |
+| Overview | For a bloc or country and year: goods trade (IMF World), openness, top partner share, partner concentration, GDP, conflict fatalities per million, and observed IMF WEO indicators with units. Bloc figures state how many members report. |
+| Map | One selected metric for all 21 countries in the selected year. A keyboard-accessible Country menu offers the same drill-down. |
+| Trade dependence | Top named partners (share of World trade), top-partner and top-3 shares over time, HHI over named partners, and named-partner coverage of the World total. |
+| Trade exposure | Openness trend, goods trade indexed to 1990 for a fixed member cohort, and the exports/imports/balance profile. |
+| Product structure | UN Comtrade HS2 data, quarantined with the reason and the revalidation steps. |
+| Context (latest snapshot) | ACLED hotspots for 2022–2024 combined, and the latest loaded Fund for Peace FSI edition with its year. Uses current membership, not the selected year. |
+| Sources and methods | Source periods, snapshot dates and hashes, membership rule, definitions and flagged source values. |
+
+The URL keeps `bloc`, `year`, `country` and `metric`, so views are shareable and
+back/forward navigation works.
 
 ## Interpretation Rules
 
-These rules are intentional and are enforced either in the data mart, frontend,
-or audit layer.
+These are enforced by `scripts/check_static_contract.py`. Full definitions are
+in [docs/methodology.md](docs/methodology.md).
 
-- **Time series use historical analytical membership.** AES appears as an
-  analytical bloc only from the 2024 split onward; earlier Mali, Burkina Faso,
-  and Niger rows remain historical ECOWAS rows.
-- **Snapshot panels use current membership.** Conflict hotspots and FSI
-  components are latest-window or latest-available panels, so the frontend
-  scopes bloc views by the current dashboard membership map. This keeps AES
-  populated even when the latest FSI source year predates the split.
-- **FSI is latest available, not necessarily current-year.** The current static
-  export uses FSI components through 2023.
-- **ACLED conflict is a latest-window operational view.** It is not a selected
-  single-year chart.
-- **Bloc HHI is calculated at bloc grain.** Partner totals are aggregated across
-  current members first, then HHI is computed on the resulting partner-share
-  distribution. The static partner export keeps the top 15 partners per
-  reporter, so bloc HHI can still be biased upward by clipped long-tail
-  partners.
-- **Product charts are coverage-gated.** Bloc-level HS2 product structure is
-  shown only when reporter and value coverage meet the dashboard thresholds.
-  Otherwise the dashboard shows an insufficient-coverage state instead of
-  implying precision.
-- **Missing values stay missing.** Nulls are never rendered as zeros.
+- **Totals are IMF World rows.** Partner rows are named economies from a
+  reviewed codelist. Aggregates are excluded, and "not specified" areas count as
+  unallocated. World minus the named-partner sum is shown as a signed difference.
+- **One HHI definition.** HHI is computed over the full named-partner
+  distribution before any top-N cut. Bloc HHI is computed at bloc grain. It is
+  conditional on named-partner coverage, and no risk verdicts are attached.
+- **Analytical AES cohort.** Burkina Faso, Mali and Niger are grouped as AES from
+  the AES confederation treaty (6 July 2024). Their legal ECOWAS exit took effect
+  on 29 January 2025. This is labelled in the UI and is not a legal-membership
+  claim.
+- **No look-ahead.** FSI values appear only for their own edition year. The
+  latest edition is shown separately with its date.
+- **Rates are exact identities.** rate = count / population in millions for the
+  same year. Population is stored in persons.
+- **Missing stays missing.** Nulls are never rendered as zero. ACLED years before
+  a country's coverage starts are null.
+- **Quarantine over invention.** Product values that cannot be validated are not
+  published.
 
 ## Pipeline Architecture
 
@@ -128,7 +133,7 @@ The Databricks catalog is `cemac_ecowas_aes_trade`.
 | Source | Used for | Notes |
 | --- | --- | --- |
 | IMF IMTS / DOTS | Bilateral goods trade by reporter, partner, and year | Primary source for partner-dependence layer. |
-| UN Comtrade | HS2 product trade structure | Product panel uses national-total W00 rows and coverage gates. |
+| UN Comtrade | HS2 product trade structure | Quarantined since Nov 2026: earlier values summed breakdown slices. Revalidation must match same-provider TOTALs. |
 | IMF World Economic Outlook | GDP and macro-fiscal indicators | Includes a CI scale anchor for Nigeria GDP to catch unit errors. |
 | ACLED | Conflict events and fatalities | Operational context, latest loaded hotspot window. |
 | Fund for Peace FSI | Fragility total and component scores | Latest available coverage through 2023 in the current export. |
@@ -152,31 +157,18 @@ for annual time-series panels. Latest snapshot panels show them under AES.
 ```text
 push to main
   -> .github/workflows/deploy-pages.yml
-  -> scripts/export_static.py
   -> node --check static/js/*.js
-  -> scripts/audit_dashboard_data.py --check-only
-  -> scripts/validate_dashboard_contract.py
+  -> scripts/check_static_contract.py        (exact identities)
+  -> scripts/test_contract_mutations.py      (known defects must be caught)
   -> upload static/ to GitHub Pages
 ```
 
-Exported dashboard files:
-
-```text
-static/data/country_timeseries.json
-static/data/top_trade_partners.json
-static/data/conflict_hotspots.json
-static/data/fragility_components.json
-static/data/bloc_comparison.json
-static/data/product_trade_hs2.json
-```
-
-The committed `static/data/` files make local preview possible without
-Databricks credentials. The deployed Pages artifact is refreshed from live
-Databricks during CI.
+Other branches run the same checks without deploying
+(`.github/workflows/checks.yml`). The Databricks export step is out of the
+deploy path until the corrected notebooks have been rerun (see
+docs/methodology.md).
 
 ## Local Preview
-
-No Databricks access is required to preview the committed dashboard export.
 
 ```bash
 python -m http.server 8080 --directory static
@@ -184,32 +176,18 @@ python -m http.server 8080 --directory static
 
 Open <http://localhost:8080>.
 
-## Refreshing From Databricks
+## Rebuilding the Data
 
-Create a local `.env` file or export the variables directly:
-
-```bash
-DATABRICKS_HOST=dbc-xxxx.cloud.databricks.com
-DATABRICKS_HTTP_PATH=/sql/1.0/warehouses/xxxx
-DATABRICKS_TOKEN=...
-DATABRICKS_CATALOG=cemac_ecowas_aes_trade
-```
-
-Then run:
+From preserved raw extractor snapshots, with no network and no Databricks:
 
 ```bash
-pip install -r requirements.txt
-python scripts/export_static.py
-python scripts/audit_dashboard_data.py --check-only
-python scripts/validate_dashboard_contract.py
+python scripts/offline_rebuild.py --raw-dir <raw snapshot dir>
+python scripts/check_static_contract.py --raw-dir <raw snapshot dir>
+python scripts/test_contract_mutations.py
 ```
 
-For a full gold-table rebuild from Databricks notebooks:
-
-```bash
-python scripts/rebuild_gold_dashboard.py
-python scripts/export_static.py
-```
+The same inputs produce byte-identical outputs; the contract check verifies
+this.
 
 ## Repository Map
 
@@ -233,7 +211,8 @@ python scripts/export_static.py
 ├── 14_gold_dashboard_core_marts.ipynb
 ├── 15_gold_dashboard_panel_marts.ipynb
 ├── docs/
-│   ├── dashboard_data_audit.md
+│   ├── methodology.md
+│   ├── dashboard_data_audit.md   (superseded May 2026 audit)
 │   └── decisions/
 │       ├── ADR-001-extraction-architecture.md
 │       ├── ADR-002-bilateral-trade-source.md
@@ -247,7 +226,15 @@ python scripts/export_static.py
 │       ├── imf_dots_extract.py
 │       ├── imf_weo_extract.py
 │       └── tradingeconomics_trade_page_extract.py
+├── config/
+│   ├── imf_cl_imts_country_1.0.0.tsv
+│   ├── imts_counterpart_roles.csv
+│   └── iso3166_alpha3.csv
 ├── scripts/
+│   ├── observatory_definitions.py
+│   ├── offline_rebuild.py
+│   ├── check_static_contract.py
+│   ├── test_contract_mutations.py
 │   ├── _dbx_config.py
 │   ├── audit_dashboard_data.py
 │   ├── databricks_sql.py
@@ -272,12 +259,9 @@ python scripts/export_static.py
 ```bash
 node --check static/js/charts.js
 node --check static/js/app_static.js
-python -m py_compile scripts/databricks_sql.py scripts/export_static.py scripts/audit_dashboard_data.py scripts/validate_dashboard_contract.py
-python scripts/audit_dashboard_data.py --check-only
+python scripts/check_static_contract.py
+python scripts/test_contract_mutations.py
 ```
-
-`scripts/validate_dashboard_contract.py` also checks live Databricks row counts
-and the Nigeria GDP scale anchor when credentials are present.
 
 ## License
 

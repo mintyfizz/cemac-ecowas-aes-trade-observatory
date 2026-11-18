@@ -508,10 +508,10 @@ button, select {
 }
 
 #exposure-chart {
-  height: 276px !important;
+  height: 150px !important;
 }
 
-#partner-dependence-chart {
+#dependence-chart {
   height: 210px !important;
 }
 
@@ -1226,9 +1226,6 @@ button, select {
   margin: 8px 0 0 20px;
 }
 
-canvas.short-canvas {
-  max-height: 170px;
-}
 
 .sources {
   display: flex;
@@ -1285,4 +1282,8 @@ code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11.5px;
   color: var(--text-2);
+}
+
+#section-exposure > .chart-box {
+  min-height: 0;
 }

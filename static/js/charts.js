@@ -518,7 +518,9 @@ function renderLines(id, years, series, { title = "", yTitle = "", format = v =>
         backgroundColor: s.color,
         borderWidth: s.width ?? 2,
         borderDash: s.dash || [],
-        pointRadius: 0,
+        // Isolated observations (no neighbours) get a visible point so a
+        // single-year series, such as the 2024 AES cohort, is not invisible.
+        pointRadius: s.values.map((v, i) => (v != null && s.values[i - 1] == null && s.values[i + 1] == null) ? 3.5 : 0),
         pointHoverRadius: 4,
         tension: 0.2,
         spanGaps: false,
