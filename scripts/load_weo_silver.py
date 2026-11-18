@@ -306,7 +306,7 @@ USING DELTA
 def main() -> None:
     require_dbx_config(DBX, "host", "warehouse", "token")
     pat = _get_pat()
-    print(f"PAT loaded (ends ...{pat[-6:]})\n")
+    print("Databricks credentials loaded (value not printed).\n")
 
     bronze_records, silver_records = load_and_pivot(JSONL_PATH)
 

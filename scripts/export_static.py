@@ -107,6 +107,17 @@ def _summary(name: str, spec: ExportSpec, rows: list[dict[str, Any]], path: Path
 
 
 def main() -> None:
+    # Nov 2026: the static dashboard schema is now produced by
+    # scripts/offline_rebuild.py from preserved raw snapshots. The existing gold
+    # tables predate the trade/population/hotspot fixes and use the old schema,
+    # so exporting them would overwrite verified data with known-wrong values.
+    # Re-enable only after the corrected notebooks have been rerun and the gold
+    # output is mapped to the new schema and passes check_static_contract.py.
+    if "--allow-legacy-gold" not in sys.argv:
+        raise SystemExit(
+            "export_static.py is disabled: Databricks gold tables predate the Nov 2026 fixes. "
+            "Use scripts/offline_rebuild.py --raw-dir <snapshots>. See docs/methodology.md."
+        )
     print("Exporting Databricks gold tables for static dashboard...")
     for name, spec in TABLES.items():
         rows = dbq(spec.sql)

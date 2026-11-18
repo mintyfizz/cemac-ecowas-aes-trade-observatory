@@ -230,17 +230,24 @@ def fetch_reporter_period(
     falls back to the public preview otherwise.
 
     For authenticated calls:
-    - partnerCode=0  → all partners; partner2Code holds the bilateral partner
+    - partnerCode=0  → World (NOT "all partners"). partner2Code is a separate
+      second-partner dimension, not the bilateral partner.
+    - partner2Code=0, customsCode=C00, motCode=0 pin the request to the
+      all-procedures / all-modes / World-second-partner totals. Without them the
+      API also returns breakdown slices, and summing those double-counts.
     - Paginates using offset until all rows retrieved
     - Automatically rotates to the second key on 429
 
     For preview calls:
-    - Single request, no pagination, same partner2Code convention
+    - Single request, no pagination, same pinned dimensions
     """
     base_params: dict[str, Any] = {
         "reporterCode": reporter_code,
         "period":        period,
-        "partnerCode":   0,      # 0 = all partners; partner2Code in response holds the bilateral partner
+        "partnerCode":   0,      # 0 = World (not "all partners")
+        "partner2Code":  0,      # second partner = World; avoids partner2 breakdown slices
+        "customsCode":   "C00",  # all customs procedures (total)
+        "motCode":       0,      # all modes of transport (total)
         "cmdCode":       cmd_code,
         "flowCode":      flow_codes,
     }
@@ -347,8 +354,10 @@ def parse_records(
         value = rec.get("primaryValue")
         if value is None:
             continue
-        # partner2Code holds the bilateral partner when partnerCode=0 is used
-        partner_code = rec.get("partner2Code") or rec.get("partnerCode")
+        # partnerCode is the primary partner (0 = World). partner2Code,
+        # customsCode and motCode are separate dimensions and are preserved so
+        # loaders can reject breakdown slices instead of summing them.
+        partner_code = rec.get("partnerCode")
         if partner_code is None:
             continue
         pcode = int(partner_code)
@@ -376,6 +385,9 @@ def parse_records(
             "is_aggregate":   bool(rec.get("isAggregate", False)),
             "is_intra_bloc":  pcode in _PROJECT_CODES,
             "classification": rec.get("classificationCode", ""),
+            "partner2_code":  rec.get("partner2Code"),
+            "customs_code":   rec.get("customsCode"),
+            "mot_code":       rec.get("motCode"),
         })
     return rows
 

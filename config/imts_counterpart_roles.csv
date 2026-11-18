@@ -1,0 +1,362 @@
+# Reviewed role per IMF IMTS counterpart code (codelist IMF.STA:CL_IMTS_COUNTRY 1.0.0, fetched 2026-11-18).
+# Roles: world | named_partner | aggregate | unallocated. The rebuild fails on any raw code missing here.
+code,name_en,role,historical_or_combined,review_note
+ABW,"Aruba, Kingdom of the Netherlands",named_partner,no,Named economy
+AFG,"Afghanistan, Islamic Republic of",named_partner,no,Named economy
+AFR,Africa (AFR),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+AGO,Angola,named_partner,no,Named economy
+AIA,"Anguilla, United Kingdom-British Overseas Territory",named_partner,no,Named economy
+ALA,Åland Islands,named_partner,no,Named economy
+ALB,Albania,named_partner,no,Named economy
+AND,"Andorra, Principality of",named_partner,no,Named economy
+ANT,Netherlands Antilles,named_partner,yes,Former/combined economy reported by IMF; kept as a named partner
+APD,Asia and Pacific (APD),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+ARE,United Arab Emirates,named_partner,no,Named economy
+ARG,Argentina,named_partner,no,Named economy
+ARM,"Armenia, Republic of",named_partner,no,Named economy
+ASM,American Samoa,named_partner,no,Named economy
+ATF,French Southern Territories,named_partner,no,Named economy
+ATG,Antigua and Barbuda,named_partner,no,Named economy
+AUS,Australia,named_partner,no,Named economy
+AUT,Austria,named_partner,no,Named economy
+AZE,"Azerbaijan, Republic of",named_partner,no,Named economy
+BDI,Burundi,named_partner,no,Named economy
+BEL,Belgium,named_partner,no,Named economy
+BEN,Benin,named_partner,no,Named economy
+BES,"Bonaire, Saint Eustatius and Saba",named_partner,no,Named economy
+BFA,Burkina Faso,named_partner,no,Named economy
+BGD,Bangladesh,named_partner,no,Named economy
+BGR,Bulgaria,named_partner,no,Named economy
+BHR,"Bahrain, Kingdom of",named_partner,no,Named economy
+BHS,"Bahamas, The",named_partner,no,Named economy
+BIH,Bosnia and Herzegovina,named_partner,no,Named economy
+BLM,Saint Barthelemy,named_partner,no,Named economy
+BLR,"Belarus, Republic of",named_partner,no,Named economy
+BLZ,Belize,named_partner,no,Named economy
+BMU,Bermuda,named_partner,no,Named economy
+BOL,Bolivia,named_partner,no,Named economy
+BRA,Brazil,named_partner,no,Named economy
+BRB,Barbados,named_partner,no,Named economy
+BRN,Brunei Darussalam,named_partner,no,Named economy
+BTN,Bhutan,named_partner,no,Named economy
+BVT,Bouvet Island,named_partner,no,Named economy
+BWA,Botswana,named_partner,no,Named economy
+CAF,Central African Republic,named_partner,no,Named economy
+CAN,Canada,named_partner,no,Named economy
+CCK,Cocos Islands,named_partner,no,Named economy
+CHE,Switzerland,named_partner,no,Named economy
+CHL,Chile,named_partner,no,Named economy
+CHN,"China, People's Republic of",named_partner,no,Named economy
+CIV,Côte d'Ivoire,named_partner,no,Named economy
+CMR,Cameroon,named_partner,no,Named economy
+COD,"Congo, Democratic Republic of the",named_partner,no,Named economy
+COG,"Congo, Republic of",named_partner,no,Named economy
+COK,Cook Islands,named_partner,no,Named economy
+COL,Colombia,named_partner,no,Named economy
+COM,"Comoros, Union of the",named_partner,no,Named economy
+CPV,Cabo Verde,named_partner,no,Named economy
+CRI,Costa Rica,named_partner,no,Named economy
+CSK,Czechoslovakia,named_partner,yes,Former/combined economy reported by IMF; kept as a named partner
+CUB,Cuba,named_partner,no,Named economy
+CUW,"Curaçao, Kingdom of the Netherlands",named_partner,no,Named economy
+CWX,Curaçao and Sint Maarten,named_partner,yes,Former/combined economy reported by IMF; kept as a named partner
+CXR,Christmas Island,named_partner,no,Named economy
+CYM,Cayman Islands,named_partner,no,Named economy
+CYP,Cyprus,named_partner,no,Named economy
+CZE,Czech Republic,named_partner,no,Named economy
+DDR,German Democratic Republic,named_partner,yes,Former/combined economy reported by IMF; kept as a named partner
+DEU,Germany,named_partner,no,Named economy
+DJI,Djibouti,named_partner,no,Named economy
+DMA,Dominica,named_partner,no,Named economy
+DNK,Denmark,named_partner,no,Named economy
+DOM,Dominican Republic,named_partner,no,Named economy
+DZA,Algeria,named_partner,no,Named economy
+ECU,Ecuador,named_partner,no,Named economy
+EGY,"Egypt, Arab Republic of",named_partner,no,Named economy
+ERI,"Eritrea, The State of",named_partner,no,Named economy
+ESH,Western Sahara,named_partner,no,Named economy
+ESP,Spain,named_partner,no,Named economy
+EST,"Estonia, Republic of",named_partner,no,Named economy
+ETH,"Ethiopia, The Federal Democratic Republic of",named_partner,no,Named economy
+EUR,Europe (EUR),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+FIN,Finland,named_partner,no,Named economy
+FJI,"Fiji, Republic of",named_partner,no,Named economy
+FLK,Falkland Islands (Malvinas),named_partner,no,Named economy
+FRA,France,named_partner,no,Named economy
+FRO,Faroe Islands,named_partner,no,Named economy
+FSM,"Micronesia, Federated States of",named_partner,no,Named economy
+G001,World,world,no,IMF World total; used as the headline total
+G080,EMDEs by Source of Export Earnings: Fuel,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G083,EMDEs by Source of Export Earnings: Manufactures,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G084,"EMDEs by Source of Export Earnings: Services (including Income, Transfers)",aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G087,EMDEs by External Financing: Net Debtors with Arrears and/or Reschedulings,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G089,EMDEs by Source of Export Earnings: Primary Products (excluding Fuel),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G092,EMDEs by Source of Export Earnings: Nonfuel,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G110,Advanced Economies,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G119,G7,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G120,G20,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G1201,Emerging Market and Middle-Income Economies,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G129,Benelux,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G1515,Emerging Asia,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G1614,Sub-Saharan Africa (SSA): Oil Exporters,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G1626,Sub-Saharan Africa (SSA): Middle-Income,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G1627,Sub-Saharan Africa (SSA): Low-Income,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G163,Euro Area (EA),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G200,Emerging Market and Developing Economies,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G201,Low-Income Developing Countries (LIDC),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G202,Advanced Asia,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G205,Latin America and the Caribbean (LAC),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G209,EMDEs by External Financing: Net Creditors,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G216,EMDEs by Source of Export Earnings: Diversified,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G309,Eastern Caribbean Currency Union (ECCU),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G400,Middle East and Central Asia,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G401,Middle East and Central Asia: Oil Exporters,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G402,Middle East and Central Asia: Oil Importers,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G406,Middle East and North Africa (MENA),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G450,Gulf Cooperation Council (GCC),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G505,Emerging and Developing Asia,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G510,ASEAN-5,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G603,Sub-Saharan Africa (SSA),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G606,EMDEs by External Financing: Net Debtors,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G609,CFA franc zone,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G619,East African Community (EAC),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G711,Heavily Indebted Poor Countries (HIPC),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G715,Fragile and Conflict-affected States (FCS),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G757,Southern African Customs Union (SACU),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G758,Central African Economic and Monetary Community (CEMAC),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G759,West African Economic and Monetary Union (WAEMU),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G760,Common Market for Eastern and Southern Africa (COMESA),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G765,Southern African Development Community (SADC),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G776,Economic Community of West African States (ECOWAS),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G903,Emerging and Developing Europe,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G906,Advanced Europe,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G92031,North America,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G940,Caucasus and Central Asia (CCA),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G995,Euro Area (EA) – aggregate of member states,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+G998,European Union (EU),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+GAB,Gabon,named_partner,no,Named economy
+GASEAN,ASEAN,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+GBR,United Kingdom,named_partner,no,Named economy
+GEO,Georgia,named_partner,no,Named economy
+GGY,Guernsey,named_partner,no,Named economy
+GHA,Ghana,named_partner,no,Named economy
+GIB,Gibraltar,named_partner,no,Named economy
+GIN,Guinea,named_partner,no,Named economy
+GLP,Guadeloupe,named_partner,no,Named economy
+GMB,"Gambia, The",named_partner,no,Named economy
+GNB,Guinea-Bissau,named_partner,no,Named economy
+GNQ,"Equatorial Guinea, Republic of",named_partner,no,Named economy
+GRC,Greece,named_partner,no,Named economy
+GRD,Grenada,named_partner,no,Named economy
+GRL,Greenland,named_partner,no,Named economy
+GSAC,Southern African Customs Union (SACU),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+GTM,Guatemala,named_partner,no,Named economy
+GUF,French Guiana,named_partner,no,Named economy
+GUM,Guam,named_partner,no,Named economy
+GUY,Guyana,named_partner,no,Named economy
+GX170,Europe,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+GX405,Middle East,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+GX440,"Middle East, North Africa, Afghanistan, and Pakistan",aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+GX605,Africa,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+GX901,CIS,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+HKG,"Hong Kong Special Administrative Region, People's Republic of China",named_partner,no,Named economy
+HMD,Heard Island and McDonald Islands,named_partner,no,Named economy
+HND,Honduras,named_partner,no,Named economy
+HRV,"Croatia, Republic of",named_partner,no,Named economy
+HTI,Haiti,named_partner,no,Named economy
+HUN,Hungary,named_partner,no,Named economy
+IDN,Indonesia,named_partner,no,Named economy
+IMN,Isle of Man,named_partner,no,Named economy
+IND,India,named_partner,no,Named economy
+IOT,British Indian Ocean Territory,named_partner,no,Named economy
+IRL,Ireland,named_partner,no,Named economy
+IRN,"Iran, Islamic Republic of",named_partner,no,Named economy
+IRQ,Iraq,named_partner,no,Named economy
+ISL,Iceland,named_partner,no,Named economy
+ISR,Israel,named_partner,no,Named economy
+ITA,Italy,named_partner,no,Named economy
+JAM,Jamaica,named_partner,no,Named economy
+JEY,Jersey,named_partner,no,Named economy
+JOR,Jordan,named_partner,no,Named economy
+JPN,Japan,named_partner,no,Named economy
+KAZ,"Kazakhstan, Republic of",named_partner,no,Named economy
+KEN,Kenya,named_partner,no,Named economy
+KGZ,Kyrgyz Republic,named_partner,no,Named economy
+KHM,Cambodia,named_partner,no,Named economy
+KIR,Kiribati,named_partner,no,Named economy
+KNA,St. Kitts and Nevis,named_partner,no,Named economy
+KOR,"Korea, Republic of",named_partner,no,Named economy
+KOS,"Kosovo, Republic of",named_partner,no,Named economy
+KWT,Kuwait,named_partner,no,Named economy
+LAO,Lao People's Democratic Republic,named_partner,no,Named economy
+LBN,Lebanon,named_partner,no,Named economy
+LBR,Liberia,named_partner,no,Named economy
+LBY,Libya,named_partner,no,Named economy
+LCA,St. Lucia,named_partner,no,Named economy
+LIE,"Liechtenstein, Principality of",named_partner,no,Named economy
+LKA,Sri Lanka,named_partner,no,Named economy
+LSO,"Lesotho, Kingdom of",named_partner,no,Named economy
+LTU,"Lithuania, Republic of",named_partner,no,Named economy
+LUX,Luxembourg,named_partner,no,Named economy
+LVA,"Latvia, Republic of",named_partner,no,Named economy
+MAC,"Macao Special Administrative Region, People's Republic of China",named_partner,no,Named economy
+MAF,Saint Martin,named_partner,no,Named economy
+MAR,Morocco,named_partner,no,Named economy
+MCD,Middle East and Central Asia (MCD),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+MCO,Monaco,named_partner,no,Named economy
+MDA,"Moldova, Republic of",named_partner,no,Named economy
+MDG,"Madagascar, Republic of",named_partner,no,Named economy
+MDV,Maldives,named_partner,no,Named economy
+MEX,Mexico,named_partner,no,Named economy
+MHL,"Marshall Islands, Republic of the",named_partner,no,Named economy
+MKD,"North Macedonia, Republic of",named_partner,no,Named economy
+MLI,Mali,named_partner,no,Named economy
+MLT,Malta,named_partner,no,Named economy
+MMR,Myanmar,named_partner,no,Named economy
+MNE,Montenegro,named_partner,no,Named economy
+MNG,Mongolia,named_partner,no,Named economy
+MNP,Northern Mariana Islands,named_partner,no,Named economy
+MOZ,"Mozambique, Republic of",named_partner,no,Named economy
+MRT,"Mauritania, Islamic Republic of",named_partner,no,Named economy
+MSR,"Montserrat, United Kingdom-British Overseas Territory",named_partner,no,Named economy
+MTQ,Martinique,named_partner,no,Named economy
+MUS,Mauritius,named_partner,no,Named economy
+MWI,Malawi,named_partner,no,Named economy
+MYS,Malaysia,named_partner,no,Named economy
+MYT,Mayotte,named_partner,no,Named economy
+NAM,Namibia,named_partner,no,Named economy
+NCL,New Caledonia,named_partner,no,Named economy
+NER,Niger,named_partner,no,Named economy
+NFK,Norfolk Island,named_partner,no,Named economy
+NGA,Nigeria,named_partner,no,Named economy
+NIC,Nicaragua,named_partner,no,Named economy
+NIU,Niue,named_partner,no,Named economy
+NLD,"Netherlands, The",named_partner,no,Named economy
+NOR,Norway,named_partner,no,Named economy
+NPL,Nepal,named_partner,no,Named economy
+NRU,"Naoero, Republic of",named_partner,no,Named economy
+NZL,New Zealand,named_partner,no,Named economy
+OMN,Oman,named_partner,no,Named economy
+PAK,Pakistan,named_partner,no,Named economy
+PAN,Panama,named_partner,no,Named economy
+PCN,Pitcairn Islands,named_partner,no,Named economy
+PER,Peru,named_partner,no,Named economy
+PHL,Philippines,named_partner,no,Named economy
+PLW,"Palau, Republic of",named_partner,no,Named economy
+PNG,Papua New Guinea,named_partner,no,Named economy
+POL,"Poland, Republic of",named_partner,no,Named economy
+PRI,Puerto Rico,named_partner,no,Named economy
+PRK,"Korea, Democratic People's Republic of",named_partner,no,Named economy
+PRT,Portugal,named_partner,no,Named economy
+PRY,Paraguay,named_partner,no,Named economy
+PYF,French Polynesia,named_partner,no,Named economy
+QAT,Qatar,named_partner,no,Named economy
+REU,Réunion,named_partner,no,Named economy
+ROU,Romania,named_partner,no,Named economy
+RUS,Russian Federation,named_partner,no,Named economy
+RWA,Rwanda,named_partner,no,Named economy
+SAU,Saudi Arabia,named_partner,no,Named economy
+SCG,Serbia and Montenegro,named_partner,yes,Former/combined economy reported by IMF; kept as a named partner
+SDN,Sudan,named_partner,no,Named economy
+SDS,Small Developing States (SDS),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+SEN,Senegal,named_partner,no,Named economy
+SGP,Singapore,named_partner,no,Named economy
+SGS,South Georgia and the South Sandwich Islands,named_partner,no,Named economy
+SHN,St. Helena,named_partner,no,Named economy
+SJM,Svalbard and Jan Mayen Islands,named_partner,no,Named economy
+SLB,Solomon Islands,named_partner,no,Named economy
+SLE,Sierra Leone,named_partner,no,Named economy
+SLV,El Salvador,named_partner,no,Named economy
+SMR,"San Marino, Republic of",named_partner,no,Named economy
+SOM,Somalia,named_partner,no,Named economy
+SPM,St. Pierre and Miquelon,named_partner,no,Named economy
+SRB,"Serbia, Republic of",named_partner,no,Named economy
+SSD,"South Sudan, Republic of",named_partner,no,Named economy
+STP,"São Tomé and Príncipe, Democratic Republic of",named_partner,no,Named economy
+SUN,Union of Soviet Socialist Republics (USSR),named_partner,yes,Former/combined economy reported by IMF; kept as a named partner
+SUR,Suriname,named_partner,no,Named economy
+SVK,Slovak Republic,named_partner,no,Named economy
+SVN,"Slovenia, Republic of",named_partner,no,Named economy
+SWE,Sweden,named_partner,no,Named economy
+SWZ,"Eswatini, Kingdom of",named_partner,no,Named economy
+SXM,"Sint Maarten, Kingdom of the Netherlands",named_partner,no,Named economy
+SYC,Seychelles,named_partner,no,Named economy
+SYR,Syrian Arab Republic,named_partner,no,Named economy
+TCA,Turks and Caicos Islands,named_partner,no,Named economy
+TCD,Chad,named_partner,no,Named economy
+TGO,Togo,named_partner,no,Named economy
+THA,Thailand,named_partner,no,Named economy
+TJK,"Tajikistan, Republic of",named_partner,no,Named economy
+TKL,Tokelau,named_partner,no,Named economy
+TKM,Turkmenistan,named_partner,no,Named economy
+TLS,"Timor-Leste, Democratic Republic of",named_partner,no,Named economy
+TON,Tonga,named_partner,no,Named economy
+TTO,Trinidad and Tobago,named_partner,no,Named economy
+TUN,Tunisia,named_partner,no,Named economy
+TUR,"Türkiye, Republic of",named_partner,no,Named economy
+TUV,Tuvalu,named_partner,no,Named economy
+TWN,Taiwan Province of China,named_partner,no,Named economy
+TX126,Belgium-Luxembourg,named_partner,yes,Former/combined economy reported by IMF; kept as a named partner
+TX198,South African Common Customs Area (SACCA),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+TX399,Western Hemisphere not specified,unallocated,no,Included in World but not attributable to a named economy
+TX489,Middle East and Central Asia not specified,unallocated,no,Included in World but not attributable to a named economy
+TX554,"Malaysia, West",named_partner,yes,Former/combined economy reported by IMF; kept as a named partner
+TX598,Asia not specified,unallocated,no,Included in World but not attributable to a named economy
+TX799,Africa not specified,unallocated,no,Included in World but not attributable to a named economy
+TX884,Europe not specified,unallocated,no,Included in World but not attributable to a named economy
+TX898,Countries & Areas not specified,unallocated,no,Included in World but not attributable to a named economy
+TX899,Special Categories,unallocated,no,Included in World but not attributable to a named economy
+TX910,Other Countries n.i.e.,unallocated,no,Included in World but not attributable to a named economy
+TZA,"Tanzania, United Republic of",named_partner,no,Named economy
+U002,Africa,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U005,South America,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U009,Oceania,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U011,Western Africa,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U013,Central America,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U014,Eastern Africa,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U015,Northern Africa,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U017,Middle Africa,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U018,Southern Africa,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U019,Americas,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U029,Caribbean,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U030,Eastern Asia,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U034,Southern Asia,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U035,South-eastern Asia,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U039,Southern Europe,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U053,Australia and New Zealand,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U054,Melanesia,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U057,Micronesia,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U061,Polynesia,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U142,Asia,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U143,Central Asia,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U145,Western Asia,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U150,Europe,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U151,Eastern Europe,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U154,Northern Europe,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U155,Western Europe,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+U202,Sub-Saharan Africa,aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+UGA,Uganda,named_partner,no,Named economy
+UKR,Ukraine,named_partner,no,Named economy
+UMI,United States Minor Outlying Islands,named_partner,no,Named economy
+URY,Uruguay,named_partner,no,Named economy
+USA,United States,named_partner,no,Named economy
+UZB,"Uzbekistan, Republic of",named_partner,no,Named economy
+VAT,Holy See,named_partner,no,Named economy
+VCT,St. Vincent and the Grenadines,named_partner,no,Named economy
+VDR,"Vietnam, Democratic Republic of",named_partner,yes,Former/combined economy reported by IMF; kept as a named partner
+VEN,"Venezuela, República Bolivariana de",named_partner,no,Named economy
+VGB,British Virgin Islands,named_partner,no,Named economy
+VIR,United States Virgin Islands,named_partner,no,Named economy
+VNM,Vietnam,named_partner,no,Named economy
+VUT,Vanuatu,named_partner,no,Named economy
+WBG,West Bank and Gaza,named_partner,no,Named economy
+WHD,Western Hemisphere (WHD),aggregate,no,Group of economies; excluded from partner sums to avoid double counting
+WLF,Wallis and Futuna Islands,named_partner,no,Named economy
+WSM,Samoa,named_partner,no,Named economy
+YAR,Yemen Arab Republic,named_partner,yes,Former/combined economy reported by IMF; kept as a named partner
+YEM,"Yemen, Republic of",named_partner,no,Named economy
+YMD,"Yemen, People's Democratic Republic of",named_partner,yes,Former/combined economy reported by IMF; kept as a named partner
+YUG,"Yugoslavia, Socialist Federal Republic of",named_partner,yes,Former/combined economy reported by IMF; kept as a named partner
+ZAF,South Africa,named_partner,no,Named economy
+ZMB,Zambia,named_partner,no,Named economy
+ZWE,Zimbabwe,named_partner,no,Named economy

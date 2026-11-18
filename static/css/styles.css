@@ -508,10 +508,10 @@ button, select {
 }
 
 #exposure-chart {
-  height: 276px !important;
+  height: 150px !important;
 }
 
-#partner-dependence-chart {
+#dependence-chart {
   height: 210px !important;
 }
 
@@ -600,7 +600,7 @@ button, select {
   height: 10px;
   background: var(--imports);
   border-radius: 3px 0 0 3px;
-  min-width: 3px;
+  min-width: 0;
   opacity: 0.85;
 }
 
@@ -615,7 +615,7 @@ button, select {
   height: 10px;
   background: var(--exports);
   border-radius: 0 3px 3px 0;
-  min-width: 3px;
+  min-width: 0;
   opacity: 0.85;
 }
 
@@ -1111,4 +1111,226 @@ button, select {
     grid-row: span 1;
     min-height: 86px;
   }
+}
+
+/* ---- Nov 2026 revision: title, navigation, disclosures ---- */
+.page-head {
+  margin-bottom: 14px;
+}
+
+.page-head h1 {
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  margin-bottom: 6px;
+}
+
+.page-head .purpose {
+  color: var(--text-2);
+  max-width: 980px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.section-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 10px;
+  font-size: 12.5px;
+}
+
+.section-nav a {
+  color: var(--muted);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--faint);
+}
+
+.section-nav a:hover,
+.section-nav a:focus-visible {
+  color: var(--text);
+  border-bottom-color: var(--text);
+}
+
+.bloc-btn:focus-visible,
+.ctrl-select:focus-visible,
+.back-btn:focus-visible,
+.section-nav a:focus-visible {
+  outline: 2px solid var(--warning);
+  outline-offset: 2px;
+}
+
+.notice {
+  background: rgba(186, 117, 23, 0.12);
+  border: 0.5px solid var(--aes);
+  border-radius: var(--radius-md);
+  color: var(--text-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+  padding: 8px 12px;
+  margin: 0 0 12px;
+}
+
+.period-chip,
+.muted-inline {
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--muted);
+  margin-left: 8px;
+}
+
+.chip {
+  display: inline-block;
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  margin-left: 4px;
+  border: 0.5px solid var(--border-2);
+  color: var(--muted);
+}
+
+.chip.warn {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.tag {
+  font-size: 10px;
+  color: var(--muted);
+  border: 0.5px solid var(--border-2);
+  border-radius: 3px;
+  padding: 0 4px;
+  margin-left: 4px;
+}
+
+.kpi .val small {
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: 2px;
+}
+
+.quarantine {
+  border-color: var(--warning);
+}
+
+.quarantine p,
+.quarantine li {
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.quarantine ol {
+  margin: 8px 0 0 20px;
+}
+
+
+.sources {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.src-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.src-table th,
+.src-table td {
+  text-align: left;
+  vertical-align: top;
+  padding: 7px 8px;
+  border-bottom: 0.5px solid var(--border);
+  color: var(--text-2);
+}
+
+.src-table th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.method-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.method-grid > div {
+  background: var(--surface-2);
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+}
+
+.method-grid h4 {
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.method-grid p {
+  font-size: 12.5px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+
+#section-exposure > .chart-box {
+  min-height: 0;
+}
+
+.econ-details {
+  margin-top: 12px;
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-3);
+  padding: 8px 12px;
+}
+
+.econ-details > summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--text-2);
+  padding: 4px 0;
+}
+
+.econ-details > summary:focus-visible {
+  outline: 2px solid var(--warning);
+  outline-offset: 2px;
+}
+
+.econ-details[open] > summary {
+  margin-bottom: 8px;
+}
+
+.econ-details .econ-grid {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.break-note {
+  margin-top: 2px;
+}
+
+details.tech-details {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+details.tech-details summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+details.tech-details ol {
+  margin: 6px 0 0 20px;
+  line-height: 1.5;
 }

@@ -1,3 +1,5 @@
+> **Superseded (Nov 2026).** This May 2026 audit passed internally consistent but wrong data: trade totals summed IMF aggregate areas, and per-million rates were 10⁶ too small. See [methodology.md](methodology.md) and `scripts/check_static_contract.py`.
+
 # Dashboard Data Audit
 
 Generated: 2026-05-26 08:36:27 UTC

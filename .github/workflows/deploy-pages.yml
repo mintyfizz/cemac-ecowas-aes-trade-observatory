@@ -38,17 +38,11 @@ jobs:
         with:
           node-version: "24"
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-
-      - name: Export Databricks gold tables to static JSON
-        env:
-          DATABRICKS_HOST:      ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
-          DATABRICKS_TOKEN:     ${{ secrets.DATABRICKS_TOKEN }}
-          DATABRICKS_CATALOG:   ${{ secrets.DATABRICKS_CATALOG }}
-        run: python scripts/export_static.py
-
+      # The deployed data is the committed static/data, rebuilt offline from
+      # preserved raw snapshots (scripts/offline_rebuild.py). The previous
+      # Databricks export step is intentionally removed from the deploy path
+      # until the corrected notebooks have been rerun and their gold output
+      # passes the same contract (see docs/methodology.md).
       - name: Validate frontend JavaScript
         run: |
           node --check static/js/charts.js
@@ -56,23 +50,15 @@ jobs:
 
       - name: Validate Python scripts
         run: |
-          python -m py_compile scripts/databricks_sql.py scripts/export_static.py scripts/audit_dashboard_data.py scripts/validate_dashboard_contract.py
+          python -m py_compile scripts/observatory_definitions.py scripts/offline_rebuild.py scripts/check_static_contract.py scripts/test_contract_mutations.py
 
-      - name: Audit exported static dashboard data
-        env:
-          DATABRICKS_HOST:      ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
-          DATABRICKS_TOKEN:     ${{ secrets.DATABRICKS_TOKEN }}
-          DATABRICKS_CATALOG:   ${{ secrets.DATABRICKS_CATALOG }}
-        run: python scripts/audit_dashboard_data.py --check-only
+      - name: Exact-identity contract checks on static data
+        run: python scripts/check_static_contract.py
+      - name: Partner chart display regressions
+        run: node --test scripts/test_partner_bars.cjs
 
-      - name: Validate live Databricks dashboard contract
-        env:
-          DATABRICKS_HOST:      ${{ secrets.DATABRICKS_HOST }}
-          DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
-          DATABRICKS_TOKEN:     ${{ secrets.DATABRICKS_TOKEN }}
-          DATABRICKS_CATALOG:   ${{ secrets.DATABRICKS_CATALOG }}
-        run: python scripts/validate_dashboard_contract.py
+      - name: Contract checks catch known defects
+        run: python scripts/test_contract_mutations.py
 
       - name: Setup Pages
         uses: actions/configure-pages@v5

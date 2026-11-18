@@ -1,0 +1,281 @@
+# ISO 3166-1 alpha-3 (current) + ISO 3166-3 former codes. Generated from pycountry 26.2.16 (iso-codes data). Do not edit by hand.
+alpha3,name,status
+ABW,Aruba,current
+AFG,Afghanistan,current
+AFI,French Afars and Issas,historic
+AGO,Angola,current
+AIA,Anguilla,current
+ALA,Åland Islands,current
+ALB,Albania,current
+AND,Andorra,current
+ANT,Netherlands Antilles,historic
+ARE,United Arab Emirates,current
+ARG,Argentina,current
+ARM,Armenia,current
+ASM,American Samoa,current
+ATA,Antarctica,current
+ATB,British Antarctic Territory,historic
+ATF,French Southern Territories,current
+ATG,Antigua and Barbuda,current
+ATN,Dronning Maud Land,historic
+AUS,Australia,current
+AUT,Austria,current
+AZE,Azerbaijan,current
+BDI,Burundi,current
+BEL,Belgium,current
+BEN,Benin,current
+BES,"Bonaire, Sint Eustatius and Saba",current
+BFA,Burkina Faso,current
+BGD,Bangladesh,current
+BGR,Bulgaria,current
+BHR,Bahrain,current
+BHS,Bahamas,current
+BIH,Bosnia and Herzegovina,current
+BLM,Saint Barthélemy,current
+BLR,Belarus,current
+BLZ,Belize,current
+BMU,Bermuda,current
+BOL,"Bolivia, Plurinational State of",current
+BRA,Brazil,current
+BRB,Barbados,current
+BRN,Brunei Darussalam,current
+BTN,Bhutan,current
+BUR,"Burma, Socialist Republic of the Union of",historic
+BVT,Bouvet Island,current
+BWA,Botswana,current
+BYS,Byelorussian SSR Soviet Socialist Republic,historic
+CAF,Central African Republic,current
+CAN,Canada,current
+CCK,Cocos (Keeling) Islands,current
+CHE,Switzerland,current
+CHL,Chile,current
+CHN,China,current
+CIV,Côte d'Ivoire,current
+CMR,Cameroon,current
+COD,"Congo, The Democratic Republic of the",current
+COG,Congo,current
+COK,Cook Islands,current
+COL,Colombia,current
+COM,Comoros,current
+CPV,Cabo Verde,current
+CRI,Costa Rica,current
+CSK,"Czechoslovakia, Czechoslovak Socialist Republic",historic
+CTE,Canton and Enderbury Islands,historic
+CUB,Cuba,current
+CUW,Curaçao,current
+CXR,Christmas Island,current
+CYM,Cayman Islands,current
+CYP,Cyprus,current
+CZE,Czechia,current
+DDR,German Democratic Republic,historic
+DEU,Germany,current
+DHY,Dahomey,historic
+DJI,Djibouti,current
+DMA,Dominica,current
+DNK,Denmark,current
+DOM,Dominican Republic,current
+DZA,Algeria,current
+ECU,Ecuador,current
+EGY,Egypt,current
+ERI,Eritrea,current
+ESH,Western Sahara,current
+ESP,Spain,current
+EST,Estonia,current
+ETH,Ethiopia,current
+FIN,Finland,current
+FJI,Fiji,current
+FLK,Falkland Islands (Malvinas),current
+FRA,France,current
+FRO,Faroe Islands,current
+FSM,"Micronesia, Federated States of",current
+FXX,"France, Metropolitan",historic
+GAB,Gabon,current
+GBR,United Kingdom,current
+GEL,Gilbert and Ellice Islands,historic
+GEO,Georgia,current
+GGY,Guernsey,current
+GHA,Ghana,current
+GIB,Gibraltar,current
+GIN,Guinea,current
+GLP,Guadeloupe,current
+GMB,Gambia,current
+GNB,Guinea-Bissau,current
+GNQ,Equatorial Guinea,current
+GRC,Greece,current
+GRD,Grenada,current
+GRL,Greenland,current
+GTM,Guatemala,current
+GUF,French Guiana,current
+GUM,Guam,current
+GUY,Guyana,current
+HKG,Hong Kong,current
+HMD,Heard Island and McDonald Islands,current
+HND,Honduras,current
+HRV,Croatia,current
+HTI,Haiti,current
+HUN,Hungary,current
+HVO,"Upper Volta, Republic of",historic
+IDN,Indonesia,current
+IMN,Isle of Man,current
+IND,India,current
+IOT,British Indian Ocean Territory,current
+IRL,Ireland,current
+IRN,"Iran, Islamic Republic of",current
+IRQ,Iraq,current
+ISL,Iceland,current
+ISR,Israel,current
+ITA,Italy,current
+JAM,Jamaica,current
+JEY,Jersey,current
+JOR,Jordan,current
+JPN,Japan,current
+JTN,Johnston Island,historic
+KAZ,Kazakhstan,current
+KEN,Kenya,current
+KGZ,Kyrgyzstan,current
+KHM,Cambodia,current
+KIR,Kiribati,current
+KNA,Saint Kitts and Nevis,current
+KOR,"Korea, Republic of",current
+KWT,Kuwait,current
+LAO,Lao People's Democratic Republic,current
+LBN,Lebanon,current
+LBR,Liberia,current
+LBY,Libya,current
+LCA,Saint Lucia,current
+LIE,Liechtenstein,current
+LKA,Sri Lanka,current
+LSO,Lesotho,current
+LTU,Lithuania,current
+LUX,Luxembourg,current
+LVA,Latvia,current
+MAC,Macao,current
+MAF,Saint Martin (French part),current
+MAR,Morocco,current
+MCO,Monaco,current
+MDA,"Moldova, Republic of",current
+MDG,Madagascar,current
+MDV,Maldives,current
+MEX,Mexico,current
+MHL,Marshall Islands,current
+MID,Midway Islands,historic
+MKD,North Macedonia,current
+MLI,Mali,current
+MLT,Malta,current
+MMR,Myanmar,current
+MNE,Montenegro,current
+MNG,Mongolia,current
+MNP,Northern Mariana Islands,current
+MOZ,Mozambique,current
+MRT,Mauritania,current
+MSR,Montserrat,current
+MTQ,Martinique,current
+MUS,Mauritius,current
+MWI,Malawi,current
+MYS,Malaysia,current
+MYT,Mayotte,current
+NAM,Namibia,current
+NCL,New Caledonia,current
+NER,Niger,current
+NFK,Norfolk Island,current
+NGA,Nigeria,current
+NHB,New Hebrides,historic
+NIC,Nicaragua,current
+NIU,Niue,current
+NLD,Netherlands,current
+NOR,Norway,current
+NPL,Nepal,current
+NRU,Nauru,current
+NTZ,Neutral Zone,historic
+NZL,New Zealand,current
+OMN,Oman,current
+PAK,Pakistan,current
+PAN,Panama,current
+PCI,Pacific Islands (trust territory),historic
+PCN,Pitcairn,current
+PCZ,Panama Canal Zone,historic
+PER,Peru,current
+PHL,Philippines,current
+PLW,Palau,current
+PNG,Papua New Guinea,current
+POL,Poland,current
+PRI,Puerto Rico,current
+PRK,"Korea, Democratic People's Republic of",current
+PRT,Portugal,current
+PRY,Paraguay,current
+PSE,"Palestine, State of",current
+PUS,US Miscellaneous Pacific Islands,historic
+PYF,French Polynesia,current
+QAT,Qatar,current
+REU,Réunion,current
+RHO,Southern Rhodesia,historic
+ROU,Romania,current
+RUS,Russian Federation,current
+RWA,Rwanda,current
+SAU,Saudi Arabia,current
+SCG,Serbia and Montenegro,historic
+SDN,Sudan,current
+SEN,Senegal,current
+SGP,Singapore,current
+SGS,South Georgia and the South Sandwich Islands,current
+SHN,"Saint Helena, Ascension and Tristan da Cunha",current
+SJM,Svalbard and Jan Mayen,current
+SKM,Sikkim,historic
+SLB,Solomon Islands,current
+SLE,Sierra Leone,current
+SLV,El Salvador,current
+SMR,San Marino,current
+SOM,Somalia,current
+SPM,Saint Pierre and Miquelon,current
+SRB,Serbia,current
+SSD,South Sudan,current
+STP,Sao Tome and Principe,current
+SUN,"USSR, Union of Soviet Socialist Republics",historic
+SUR,Suriname,current
+SVK,Slovakia,current
+SVN,Slovenia,current
+SWE,Sweden,current
+SWZ,Eswatini,current
+SXM,Sint Maarten (Dutch part),current
+SYC,Seychelles,current
+SYR,Syrian Arab Republic,current
+TCA,Turks and Caicos Islands,current
+TCD,Chad,current
+TGO,Togo,current
+THA,Thailand,current
+TJK,Tajikistan,current
+TKL,Tokelau,current
+TKM,Turkmenistan,current
+TLS,Timor-Leste,current
+TMP,East Timor,historic
+TON,Tonga,current
+TTO,Trinidad and Tobago,current
+TUN,Tunisia,current
+TUR,Türkiye,current
+TUV,Tuvalu,current
+TWN,"Taiwan, Province of China",current
+TZA,"Tanzania, United Republic of",current
+UGA,Uganda,current
+UKR,Ukraine,current
+UMI,United States Minor Outlying Islands,current
+URY,Uruguay,current
+USA,United States,current
+UZB,Uzbekistan,current
+VAT,Holy See (Vatican City State),current
+VCT,Saint Vincent and the Grenadines,current
+VDR,"Viet-Nam, Democratic Republic of",historic
+VEN,"Venezuela, Bolivarian Republic of",current
+VGB,"Virgin Islands, British",current
+VIR,"Virgin Islands, U.S.",current
+VNM,Viet Nam,current
+VUT,Vanuatu,current
+WAK,Wake Island,historic
+WLF,Wallis and Futuna,current
+WSM,Samoa,current
+YEM,Yemen,current
+YMD,"Yemen, Democratic, People's Democratic Republic of",historic
+YUG,"Yugoslavia, (Socialist) Federal Republic of",historic
+ZAF,South Africa,current
+ZAR,"Zaire, Republic of",historic
+ZMB,Zambia,current
+ZWE,Zimbabwe,current

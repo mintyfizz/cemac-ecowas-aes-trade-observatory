@@ -1,6 +1,7 @@
 /**
  * Chart and map renderers for the CEMAC-ECOWAS-AES dashboard.
- * The visual model follows the supplied HTML prototype: D3 map + Chart.js.
+ * D3 map + Chart.js. Rendering only: every number arrives pre-computed from
+ * static/data (see scripts/offline_rebuild.py); no aggregation happens here.
  */
 
 "use strict";
@@ -16,6 +17,7 @@ const COLORS = {
   grid: "#44453f",
   surface: "#2f302d",
   danger: "#ef7668",
+  success: "#7ed66d",
   warning: "#f7d25d",
   purple: "#7f77dd",
   teal: ["#0b3327", "#0f4f40", "#116d57", "#16896f", "#1da986"],
@@ -206,14 +208,6 @@ function fmtNumber(value, digits = 0) {
   return Number.isFinite(n)
     ? n.toLocaleString("en-US", { maximumFractionDigits: digits, minimumFractionDigits: digits })
     : "--";
-}
-
-function hhiDescription(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return "no concentration score";
-  if (n < 0.15) return "diversified";
-  if (n <= 0.25) return "moderately concentrated";
-  return "highly concentrated";
 }
 
 function metricValue(row, metric) {
@@ -417,109 +411,66 @@ async function renderMap(rows, state, metricMeta, version) {
     .text(`· ${metricMeta.label}`);
 }
 
+function partnerLabel(code, sourceName) {
+  return ISO3_NAMES[code] || sourceName || code;
+}
+
+// Partner bars: imports left, exports right; share is always of World total trade.
 function renderPartnerBars(rows) {
   const el = document.getElementById("partner-bars");
   if (!el) return;
   if (!rows || !rows.length) {
-    emptyHTML("partner-bars", "No partner data for this selection.");
+    emptyHTML("partner-bars", "No named-partner data for this selection.");
     return;
   }
-
   const top10 = rows.slice(0, 10);
-  const totalAll = top10.reduce((s, r) => s + (Number(r.total_trade_billions_usd) || 0), 0);
-  // Scale each side independently so the widest bar fills 100%
   const maxSide = Math.max(
-    ...top10.map(r => Math.max(Number(r.exports_billions_usd) || 0, Number(r.imports_billions_usd) || 0)),
-    1
+    ...top10.flatMap(r => [numericOrNull(r.exports_billions_usd), numericOrNull(r.imports_billions_usd)])
+      .filter(value => value !== null),
+    0
   );
-
-  el.innerHTML = top10.map((row, i) => {
-    const exp = Number(row.exports_billions_usd) || 0;
-    const imp = Number(row.imports_billions_usd) || 0;
-    const total = exp + imp;
-    const balance = exp - imp;
-    const sharePct = totalAll > 0 ? (total / totalAll * 100).toFixed(1) : "—";
-
-    const expPct = Math.max(2, (exp / maxSide) * 100).toFixed(2);
-    const impPct = Math.max(2, (imp / maxSide) * 100).toFixed(2);
-
-    // Balance badge: +surplus / −deficit / balanced
-    const balClass = balance > 0.05 ? "surplus" : balance < -0.05 ? "deficit" : "balanced";
-    const balLabel = Math.abs(balance) < 0.05 ? "≈0" : (balance > 0 ? "+" : "") + shortMoneyB(balance);
-
-    const name = escapeHTML(
-      ISO3_NAMES[row.counterpart_iso3]
-      || (row.counterpart_name && row.counterpart_name !== row.counterpart_iso3 ? row.counterpart_name : null)
-      || row.counterpart_iso3
-    );
-
+  const widthPct = value => value === null || maxSide === 0 ? 0 : value / maxSide * 100;
+  const preciseUsd = value => value === null ? "unavailable" : (value * 1e9).toLocaleString("en-US", {
+    style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2,
+  });
+  el.innerHTML = top10.map(row => {
+    const exp = numericOrNull(row.exports_billions_usd);
+    const imp = numericOrNull(row.imports_billions_usd);
+    const balance = exp === null || imp === null ? null : exp - imp;
+    const share = row.share_of_world_total_pct;
+    const expPct = widthPct(exp);
+    const impPct = widthPct(imp);
+    const balClass = balance > 0 ? "surplus" : balance < 0 ? "deficit" : "balanced";
+    // Keep small nonzero balances visible instead of rounding them to $0.00B.
+    const magnitude = Math.abs(balance);
+    const balLabel = balance === null ? "unavailable" : balance === 0 ? "$0" :
+      (balance < 0 ? "-" : "+") + (magnitude < 0.005
+        ? `$${(magnitude * 1e9).toLocaleString("en-US", { maximumSignificantDigits: 6 })}`
+        : shortMoneyB(magnitude));
+    const name = escapeHTML(partnerLabel(row.counterpart_code, row.counterpart_name));
+    const flags = [
+      row.counterpart_in_same_bloc ? "member of this bloc" : null,
+      row.counterpart_historical_or_combined ? "former/combined economy" : null,
+    ].filter(Boolean).join(", ");
     return `
-      <div class="dbar-row" title="${name} · Balance: ${balLabel}">
+      <div class="dbar-row" title="${name}${flags ? ` (${escapeHTML(flags)})` : ""} · imports ${preciseUsd(imp)} · exports ${preciseUsd(exp)} · balance ${preciseUsd(balance)} · ${fmtPct(share)} of World total trade">
         <div class="dbar-imp-val">${shortMoneyB(imp)}</div>
-        <div class="dbar-imp-track">
-          <div class="dbar-imp-fill" style="width:${impPct}%"></div>
-        </div>
+        <div class="dbar-imp-track"><div class="dbar-imp-fill" style="width:${impPct}%"></div></div>
         <div class="dbar-center">
-          <span class="dbar-name">${name}</span>
-          <span class="dbar-meta"><span class="dbar-bal ${balClass}">${balLabel}</span><span class="dbar-sep">·</span>${sharePct}%</span>
+          <span class="dbar-name">${name}${row.counterpart_in_same_bloc ? ' <span class="tag">member</span>' : ""}</span>
+          <span class="dbar-meta"><span class="dbar-bal ${balClass}">${balLabel}</span><span class="dbar-sep">·</span>${fmtPct(share)}</span>
         </div>
-        <div class="dbar-exp-track">
-          <div class="dbar-exp-fill" style="width:${expPct}%"></div>
-        </div>
+        <div class="dbar-exp-track"><div class="dbar-exp-fill" style="width:${expPct}%"></div></div>
         <div class="dbar-exp-val">${shortMoneyB(exp)}</div>
       </div>`;
   }).join("");
 }
 
-function renderPartnerDependence(data, state) {
-  const summary = document.getElementById("partner-dependence-summary");
-  const title = document.getElementById("partner-dependence-title");
-  const sub = document.getElementById("partner-dependence-sub");
-  const ctx = canvas("partner-dependence-chart");
-  if (!ctx) return;
-
-  const current = data?.current || null;
-  const series = (data?.series || []).filter(row =>
-    Number.isFinite(row.year) &&
-    (row.top_partner_share_pct != null || row.top3_share_pct != null)
-  );
-
-  if (title) title.textContent = `${state.country ? ISO3_NAMES[state.country] || state.country : state.bloc} · Partner dependence`;
-  if (sub) sub.textContent = "Top partner and top-3 share of total trade";
-
-  if (!current || !series.length) {
-    if (summary) summary.innerHTML = `<div class="empty-state">No partner dependence data for this selection.</div>`;
-    chartEmpty("partner-dependence-chart", "No partner dependence trend.");
-    return;
-  }
-
-  const topName = ISO3_NAMES[current.top_partner_iso3] || current.top_partner_name || current.top_partner_iso3 || "--";
-  const hhiText = hhiDescription(current.hhi);
-  if (summary) {
-    summary.innerHTML = `
-      <div class="diag-chip">
-        <span class="lbl">Top partner</span>
-        <span class="val">${escapeHTML(topName)}</span>
-        <span class="desc">${fmtPct(current.top_partner_share_pct)} of total trade</span>
-      </div>
-      <div class="diag-chip">
-        <span class="lbl">Top 3 partners</span>
-        <span class="val">${fmtPct(current.top3_share_pct)}</span>
-        <span class="desc">combined share of trade</span>
-      </div>
-      <div class="diag-chip">
-        <span class="lbl">HHI</span>
-        <span class="val">${fmtPlain(current.hhi, 3)}</span>
-        <span class="desc">${escapeHTML(hhiText)}</span>
-      </div>
-    `;
-  }
-
-  const years = series.map(row => row.year);
-  const yearMarkerPlugin = {
-    id: "partnerDependenceYearMarker",
+function yearMarker(years, selectedYear) {
+  return {
+    id: "selectedYearMarker",
     afterDraw(chart) {
-      const idx = years.indexOf(Number(state.year));
+      const idx = years.indexOf(Number(selectedYear));
       if (idx < 0) return;
       const x = chart.scales.x.getPixelForValue(idx);
       const { top, bottom } = chart.chartArea;
@@ -527,7 +478,7 @@ function renderPartnerDependence(data, state) {
       c.save();
       c.setLineDash([4, 3]);
       c.strokeStyle = "rgba(255,255,255,0.35)";
-      c.lineWidth = 1.3;
+      c.lineWidth = 1.2;
       c.beginPath();
       c.moveTo(x, top);
       c.lineTo(x, bottom);
@@ -535,677 +486,126 @@ function renderPartnerDependence(data, state) {
       c.restore();
     },
   };
-
-  chartStore["partner-dependence-chart"] = new Chart(ctx, {
-    type: "line",
-    data: {
-      labels: years,
-      datasets: [
-        {
-          label: "Top partner share",
-          data: series.map(row => row.top_partner_share_pct ?? null),
-          borderColor: COLORS.warning,
-          backgroundColor: COLORS.warning,
-          tension: 0.24,
-          pointRadius: 0,
-          pointHoverRadius: 4,
-          spanGaps: true,
-        },
-        {
-          label: "Top 3 share",
-          data: series.map(row => row.top3_share_pct ?? null),
-          borderColor: COLORS.imports,
-          backgroundColor: COLORS.imports,
-          tension: 0.24,
-          pointRadius: 0,
-          pointHoverRadius: 4,
-          spanGaps: true,
-        },
-      ],
-    },
-    options: lineOptions("Partner dependence over time", "Share of total trade (%)", {
-      plugins: {
-        legend: { position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 3, usePointStyle: true, pointStyle: "line" } },
-        title: { display: true, text: "Partner dependence over time", color: COLORS.text, font: { size: 12, weight: "500" } },
-        tooltip: {
-          backgroundColor: "#11120f",
-          borderColor: "#55564f",
-          borderWidth: 1,
-          callbacks: {
-            label(context) {
-              return `${context.dataset.label}: ${fmtPct(context.parsed.y)}`;
-            },
-          },
-        },
-      },
-    }),
-    plugins: [yearMarkerPlugin],
-  });
 }
 
-function renderHHI(data, state) {
-  const ctx = canvas("hhi-chart");
-  if (!ctx) return;
-  const rows = data?.hhi || [];
-  if (!rows.length) return chartEmpty("hhi-chart", "No HHI data.");
+/**
+ * Generic multi-series line chart.
+ * series: [{label, color, values: (number|null)[], width?, dash?}]
+ */
+function breakMarker(years, breakYear, label) {
+  return {
+    id: "compositionBreakMarker",
+    afterDraw(chart) {
+      const idx = years.indexOf(Number(breakYear));
+      if (idx < 0) return;
+      const x = chart.scales.x.getPixelForValue(idx);
+      const { top, bottom } = chart.chartArea;
+      const c = chart.ctx;
+      c.save();
+      c.setLineDash([2, 3]);
+      c.strokeStyle = COLORS.AES;
+      c.lineWidth = 1.4;
+      c.beginPath();
+      c.moveTo(x, top);
+      c.lineTo(x, bottom);
+      c.stroke();
+      c.setLineDash([]);
+      c.fillStyle = COLORS.AES;
+      c.font = "10px " + Chart.defaults.font.family;
+      c.textAlign = "right";
+      c.fillText(label, x - 4, top + 10);
+      c.restore();
+    },
+  };
+}
 
-  if (state.country) {
-    // rows is the country's own HHI time-series across all years (API fixed)
-    const years = [...new Set(rows.map(row => row.year))].sort((a, b) => a - b);
-    const name = rows[0]?.country_name || state.country;
-    chartStore["hhi-chart"] = new Chart(ctx, {
-      type: "line",
-      data: {
-        labels: years,
-        datasets: [
-          {
-            label: name,
-            data: years.map(year => rows.find(row => row.year === year)?.hhi ?? null),
-            borderColor: COLORS.exports,
-            backgroundColor: COLORS.exports,
-            pointRadius: 0,
-            pointHoverRadius: 4,
-            tension: 0.24,
-            spanGaps: true,
-          },
-          {
-            label: "Highly concentrated (0.25)",
-            data: years.map(() => 0.25),
-            borderColor: COLORS.danger,
-            borderDash: [4, 4],
-            pointRadius: 0,
-            borderWidth: 1.2,
-          },
-          {
-            label: "Diversified threshold (0.15)",
-            data: years.map(() => 0.15),
-            borderColor: "#7ed66d",
-            borderDash: [3, 3],
-            pointRadius: 0,
-            borderWidth: 1,
-          },
-        ],
+function renderLines(id, years, series, { title = "", yTitle = "", format = v => fmtPlain(v, 1), selectedYear = null, log = false, yMin, breakYear = null, breakLabel = "membership break" } = {}) {
+  const ctx = canvas(id);
+  if (!ctx) return;
+  const any = series.some(s => s.values.some(v => v != null));
+  if (!years.length || !any) return chartEmpty(id, "No observations for this selection.");
+  const opts = lineOptions(title, yTitle, {
+    plugins: {
+      legend: { position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 3, usePointStyle: true, pointStyle: "line" } },
+      title: { display: !!title, text: title, color: COLORS.text, font: { size: 12, weight: "500" } },
+      tooltip: {
+        backgroundColor: "#11120f", borderColor: "#55564f", borderWidth: 1,
+        callbacks: {
+          title: items => items.length ? `${items[0].label}` : "",
+          label: item => `${item.dataset.label}: ${item.parsed.y == null ? "no data" : format(item.parsed.y)}`,
+        },
       },
-      options: lineOptions("Partner HHI over time", "HHI"),
-    });
-    return;
+    },
+  });
+  if (log) {
+    opts.scales.y.type = "logarithmic";
+    opts.scales.y.ticks.callback = value => formatIndexTick(value);
+  } else if (yMin !== undefined) {
+    opts.scales.y.min = yMin;
   }
-
-  const blocs = [...new Set(rows.map(row => row.analytical_bloc_code))].sort();
-  const years = [...new Set(rows.map(row => row.year))].sort((a, b) => a - b);
-  chartStore["hhi-chart"] = new Chart(ctx, {
+  chartStore[id] = new Chart(ctx, {
     type: "line",
     data: {
       labels: years,
-      datasets: blocs.map(bloc => ({
-        label: bloc,
-        data: years.map(year => rows.find(row => row.year === year && row.analytical_bloc_code === bloc)?.hhi ?? null),
-        borderColor: blocColor(bloc),
-        backgroundColor: blocColor(bloc),
-        borderWidth: bloc === state.bloc ? 2.6 : 1.2,
-        pointRadius: 0,
-        tension: 0.24,
-        spanGaps: true,
-      })).concat([
-        {
-          label: "Highly concentrated (0.25)",
-          data: years.map(() => 0.25),
-          borderColor: COLORS.danger,
-          borderDash: [4, 4],
-          pointRadius: 0,
-          borderWidth: 1.2,
-        },
-        {
-          label: "Diversified threshold (0.15)",
-          data: years.map(() => 0.15),
-          borderColor: "#7ed66d",
-          borderDash: [3, 3],
-          pointRadius: 0,
-          borderWidth: 1,
-        },
-      ]),
-    },
-    options: lineOptions("Partner HHI over time", "HHI"),
-  });
-}
-
-function renderIntegration(rows, state) {
-  const ctx = canvas("integration-chart");
-  if (!ctx) return;
-  if (!rows || !rows.length) return chartEmpty("integration-chart", "No bloc comparison data.");
-
-  const blocs = [...new Set(rows.map(row => row.analytical_bloc_code))].sort();
-  const years = [...new Set(rows.map(row => row.year))].sort((a, b) => a - b);
-  chartStore["integration-chart"] = new Chart(ctx, {
-    type: "line",
-    data: {
-      labels: years,
-      datasets: blocs.map(bloc => ({
-        label: bloc,
-        data: years.map(year => rows.find(row => row.year === year && row.analytical_bloc_code === bloc)?.openness_pct_gdp ?? null),
-        borderColor: blocColor(bloc),
-        backgroundColor: blocColor(bloc),
-        borderWidth: bloc === state.bloc ? 2.6 : 1.2,
-        pointRadius: years.map(year => year === state.year ? (bloc === state.bloc ? 4 : 3) : 0),
-        pointHoverRadius: 5,
-        tension: 0.24,
-        spanGaps: true,
+      datasets: series.map(s => ({
+        label: s.label,
+        data: s.values,
+        borderColor: s.color,
+        backgroundColor: s.color,
+        borderWidth: s.width ?? 2,
+        borderDash: s.dash || [],
+        // Isolated observations (no neighbours) get a visible point so a
+        // single-year series, such as the 2024 AES cohort, is not invisible.
+        pointRadius: s.values.map((v, i) => (v != null && s.values[i - 1] == null && s.values[i + 1] == null) ? 3.5 : 0),
+        pointHoverRadius: 4,
+        tension: 0.2,
+        spanGaps: false,
       })),
     },
-    options: lineOptions("Trade openness (% of GDP)", "Trade / GDP (%)", {
-      plugins: {
-        legend: { position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 3, usePointStyle: true, pointStyle: "line" } },
-        title: { display: true, text: "Trade openness (% of GDP)", color: COLORS.text, font: { size: 12, weight: "500" } },
-        tooltip: {
-          backgroundColor: "#11120f",
-          borderColor: "#55564f",
-          borderWidth: 1,
-          callbacks: {
-            title: items => items.length ? `Year ${items[0].label}` : "",
-            label: item => `${item.dataset.label}: ${fmtPct(item.parsed.y)}`,
-          },
-        },
-      },
-    }),
+    options: opts,
+    plugins: [
+      ...(selectedYear != null ? [yearMarker(years, selectedYear)] : []),
+      ...(breakYear != null ? [breakMarker(years, breakYear, `${breakYear} ${breakLabel}`)] : []),
+    ],
   });
 }
 
-function renderGrowth(rows, state) {
-  const ctx = canvas("growth-chart");
+/**
+ * Horizontal grouped/stacked bars.
+ * datasets: [{label, color, values}]
+ */
+function renderBars(id, labels, datasets, { title = "", xTitle = "", stacked = false, format = v => fmtNumber(v, 0) } = {}) {
+  const ctx = canvas(id);
   if (!ctx) return;
-  if (!rows || !rows.length) return chartEmpty("growth-chart", "No growth data.");
-
-  const years = [...new Set(rows.map(row => row.year))].sort((a, b) => a - b);
-  const groups = [...new Set(rows.map(row => row.series_code || row.country_iso3 || row.analytical_bloc_code))];
-  const rowBySeriesYear = new Map(rows.map(row => [`${row.series_code || row.country_iso3 || row.analytical_bloc_code}:${row.year}`, row]));
-  const values = rows.map(row => Number(row.index_value)).filter(Number.isFinite);
-  const maxIndex = values.length ? Math.max(...values) : 0;
-  const minIndex = values.length ? Math.min(...values.filter(value => value > 0)) : 100;
-  const useLogScale = maxIndex > 1500 && minIndex > 0;
-  const yTitle = useLogScale ? "Index (1990=100, log scale)" : "Index (1990=100)";
-  const logTicks = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000];
-  const logMax = logTicks.find(value => value >= maxIndex) || Math.ceil(maxIndex / 10000) * 10000;
-
-  chartStore["growth-chart"] = new Chart(ctx, {
-    type: "line",
-    data: {
-      labels: years,
-      datasets: groups.map(code => {
-        const first = rows.find(row => (row.series_code || row.country_iso3 || row.analytical_bloc_code) === code);
-        const bloc = first?.analytical_bloc_code || code;
-        const selected = state.country ? code === state.country : true;
-        const color = seriesColor(code, bloc);
-        return {
-          label: first?.series_name || first?.country_name || code,
-          data: years.map(year => rowBySeriesYear.get(`${code}:${year}`)?.index_value ?? null),
-          borderColor: color,
-          backgroundColor: color,
-          borderWidth: selected ? 2.35 : 1.4,
-          pointRadius: 0,
-          pointHitRadius: 14,
-          pointHoverRadius: 4.5,
-          pointHoverBorderWidth: 2,
-          tension: 0.18,
-          spanGaps: true,
-        };
-      }).concat([{
-        label: "1990 baseline",
-        data: years.map(() => 100),
-        borderColor: COLORS.muted,
-        borderDash: [3, 4],
-        borderWidth: 1,
-        pointRadius: 0,
-        pointHitRadius: 0,
-        pointHoverRadius: 0,
-      }]),
-    },
-    options: lineOptions(
-      useLogScale ? "Indexed total goods trade growth (log scale)" : "Indexed total goods trade growth",
-      yTitle,
-      {
-        scales: {
-          x: { grid: { color: COLORS.grid }, ticks: { color: COLORS.text, maxRotation: 0 } },
-          y: {
-            type: useLogScale ? "logarithmic" : "linear",
-            min: useLogScale ? Math.max(20, logTicks.find(value => value <= minIndex) || 20) : undefined,
-            suggestedMin: useLogScale ? undefined : 0,
-            suggestedMax: useLogScale ? logMax : undefined,
-            afterBuildTicks: useLogScale
-              ? axis => {
-                  axis.ticks = logTicks
-                    .filter(value => value >= axis.min && value <= axis.max)
-                    .map(value => ({ value }));
-                }
-              : undefined,
-            grid: { color: COLORS.grid },
-            ticks: {
-              color: COLORS.text,
-              padding: 6,
-              maxTicksLimit: useLogScale ? 9 : 6,
-              callback: value => useLogScale ? formatIndexTick(value) : fmtPlain(value, 0),
-            },
-            title: { display: true, text: yTitle, color: COLORS.text },
-          },
-        },
-        interaction: { mode: "nearest", axis: "xy", intersect: false },
-        hover: { mode: "nearest", intersect: false },
-        plugins: {
-          legend: { position: "top", align: "end", labels: { boxWidth: 11, boxHeight: 3, usePointStyle: true, pointStyle: "line" } },
-          title: { display: true, text: useLogScale ? "Indexed total trade growth (log scale)" : "Indexed total trade growth", color: COLORS.text, font: { size: 12, weight: "500" } },
-          tooltip: {
-            mode: "nearest",
-            intersect: false,
-            axis: "xy",
-            backgroundColor: "#11120f",
-            borderColor: "#55564f",
-            borderWidth: 1,
-            displayColors: true,
-            filter: item => item.dataset.label !== "1990 baseline",
-            callbacks: {
-              title: items => items.length ? `Year ${items[0].label}` : "",
-              label: item => {
-                const code = groups[item.datasetIndex];
-                const row = rowBySeriesYear.get(`${code}:${item.label}`);
-                const index = Number(row?.index_value);
-                const multiple = Number.isFinite(index) ? index / 100 : null;
-                return `${item.dataset.label}: ${fmtNumber(index, 0)} (${fmtPlain(multiple, 1)}x 1990)`;
-              },
-              afterLabel: item => {
-                const code = groups[item.datasetIndex];
-                const row = rowBySeriesYear.get(`${code}:${item.label}`);
-                return `Trade: ${shortMoneyB(row?.total_trade_billions_usd)}`;
-              },
-            },
-          },
-        },
-      }
-    ),
-  });
-}
-
-function renderStructureTree(overview) {
-  const ctx = canvas("exposure-chart");
-  const note = document.getElementById("exposure-note");
-  if (!ctx) return;
-
-  const exportVal = numericOrNull(overview.exports_billions_usd);
-  const importVal = numericOrNull(overview.imports_billions_usd);
-  const balance = numericOrNull(overview.trade_balance_billions_usd);
-  const gdp = numericOrNull(overview.gdp_current_usd_billions);
-  const rawExportsPct = numericOrNull(overview.exports_pct_gdp);
-  const rawImportsPct = numericOrNull(overview.imports_pct_gdp);
-  const exportsPct = rawExportsPct ?? (exportVal != null && gdp ? exportVal / gdp * 100 : null);
-  const importsPct = rawImportsPct ?? (importVal != null && gdp ? importVal / gdp * 100 : null);
-  const balancePctGdp = balance != null && gdp ? balance / gdp * 100 : null;
-
-  const rows = [
-    { label: "Exports / GDP", pct: exportsPct, usd: exportVal, color: COLORS.exports },
-    { label: "Imports / GDP", pct: importsPct, usd: importVal, color: COLORS.imports },
-    { label: "Balance / GDP", pct: balancePctGdp, usd: balance, color: balance == null || balance >= 0 ? COLORS.exports : COLORS.danger },
-  ];
-  const validRows = rows.filter(row => Number.isFinite(row.pct));
-  if (!validRows.length) {
-    if (note) note.textContent = "";
-    return chartEmpty("exposure-chart", "No trade exposure data.");
-  }
-
-  const minValue = Math.min(0, ...validRows.map(row => row.pct));
-  const maxValue = Math.max(0, ...validRows.map(row => row.pct));
-  const range = Math.max(maxValue - minValue, 20);
-  const axisMin = Math.floor((minValue - range * 0.08) / 10) * 10;
-  const axisMax = Math.ceil((maxValue + range * 0.12) / 10) * 10;
-
-  if (note) {
-    note.textContent = `Openness = exports + imports: ${fmtPct(overview.trade_openness_pct_gdp)} of GDP. Balance = exports - imports.`;
-  }
-
-  chartStore["exposure-chart"] = new Chart(ctx, {
-    type: "bar",
-    data: {
-      labels: validRows.map(row => row.label),
-      datasets: [{
-        label: "% of GDP",
-        data: validRows.map(row => row.pct),
-        backgroundColor: validRows.map(row => row.color),
-        borderRadius: 6,
-        borderSkipped: false,
-        barPercentage: 0.68,
-        categoryPercentage: 0.7,
-        customRows: validRows,
-      }],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      indexAxis: "y",
-      interaction: { mode: "nearest", axis: "y", intersect: false },
-      hover: { mode: "nearest", intersect: false },
-      plugins: {
-        legend: { display: false },
-        title: {
-          display: true,
-          text: "Trade exposure as share of GDP",
-          color: COLORS.text,
-          font: { size: 12, weight: "500" },
-        },
-        tooltip: {
-          backgroundColor: "#11120f",
-          borderColor: "#55564f",
-          borderWidth: 1,
-          displayColors: false,
-          callbacks: {
-            title: items => items.length ? items[0].label : "",
-            label: item => `${fmtPct(item.parsed.x)} of GDP`,
-            afterLabel: item => {
-              const row = item.dataset.customRows?.[item.dataIndex];
-              return row ? `${shortMoneyB(row.usd)} current USD` : "";
-            },
-          },
-        },
-      },
-      scales: {
-        x: {
-          min: axisMin,
-          max: axisMax,
-          grid: { color: COLORS.grid },
-          ticks: { color: COLORS.text, callback: value => `${value}%` },
-          title: { display: true, text: "% of GDP", color: COLORS.text },
-        },
-        y: {
-          grid: { color: "rgba(0,0,0,0)" },
-          ticks: { color: COLORS.text },
-        },
-      },
-    },
-  });
-}
-
-function renderConflict(rows) {
-  const ctx = canvas("conflict-chart");
-  if (!ctx) return;
-  if (!rows || !rows.length) return chartEmpty("conflict-chart", "No ACLED hotspot data.");
-  const selected = [...rows]
-    .sort((a, b) => (b.violent_events || 0) - (a.violent_events || 0))
-    .slice(0, 10)
-    .reverse();
-
-  chartStore["conflict-chart"] = new Chart(ctx, {
-    type: "bar",
-    data: {
-      labels: selected.map(row => row.admin1 || row.country_name || row.country_iso3),
-      datasets: [
-        {
-          label: "Violent events",
-          data: selected.map(row => row.violent_events || 0),
-          backgroundColor: "#d9c875",
-          xAxisID: "x-events",
-        },
-        {
-          label: "Fatalities",
-          data: selected.map(row => row.fatalities || 0),
-          backgroundColor: "#d87b8a",
-          xAxisID: "x-fatalities",
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      indexAxis: "y",
-      interaction: { mode: "index", axis: "y", intersect: false },
-      plugins: {
-        legend: { position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 3 } },
-        title: { display: true, text: "Conflict events & fatalities", color: COLORS.text, font: { size: 12, weight: "500" } },
-        tooltip: { backgroundColor: "#11120f", borderColor: "#55564f", borderWidth: 1 },
-      },
-      scales: {
-        "x-events": {
-          position: "top",
-          beginAtZero: true,
-          grid: { color: COLORS.grid },
-          ticks: { color: "#d9c875" },
-          title: { display: true, text: "Violent events", color: "#d9c875" },
-        },
-        "x-fatalities": {
-          position: "bottom",
-          beginAtZero: true,
-          grid: { drawOnChartArea: false },
-          ticks: { color: "#d87b8a" },
-          title: { display: true, text: "Fatalities", color: "#d87b8a" },
-        },
-        y: { grid: { color: "rgba(0,0,0,0)" }, ticks: { color: COLORS.text } },
-      },
-    },
-  });
-}
-
-function renderFragility(rows) {
-  const ctx = canvas("fragility-chart");
-  if (!ctx) return;
-  if (!rows || !rows.length) return chartEmpty("fragility-chart", "No FSI data.");
-
-  const years = rows.map(r => r.fsi_year).filter(Number.isFinite);
-  const yearLabel = years.length === 0
-    ? "latest"
-    : Math.min(...years) === Math.max(...years)
-      ? `${Math.min(...years)}`
-      : `${Math.min(...years)}–${Math.max(...years)}`;
-  const title = `Fragility components (FSI ${yearLabel})`;
-
-  const labels = ["Cohesion", "Economic", "Political", "Social"];
-  if (rows.length === 1) {
-    const row = rows[0];
-    chartStore["fragility-chart"] = new Chart(ctx, {
-      type: "radar",
-      data: {
-        labels,
-        datasets: [{
-          label: row.country_name || row.country_iso3,
-          data: [row.cohesion_score, row.economic_score, row.political_score, row.social_cross_cutting_score],
-          borderColor: COLORS.imports,
-          backgroundColor: "rgba(127,119,221,0.22)",
-          pointBackgroundColor: COLORS.imports,
-        }],
-      },
-      options: radarOptions(title, 30),
-    });
-    return;
-  }
-
-  const top = [...rows].sort((a, b) => (b.fsi_total_score || 0) - (a.fsi_total_score || 0)).slice(0, 8).reverse();
-  chartStore["fragility-chart"] = new Chart(ctx, {
-    type: "bar",
-    data: {
-      labels: top.map(row => row.country_iso3),
-      datasets: [
-        { label: "Cohesion", data: top.map(row => row.cohesion_score || 0), backgroundColor: COLORS.danger },
-        { label: "Economic", data: top.map(row => row.economic_score || 0), backgroundColor: COLORS.warning },
-        { label: "Political", data: top.map(row => row.political_score || 0), backgroundColor: COLORS.imports },
-        { label: "Social", data: top.map(row => row.social_cross_cutting_score || 0), backgroundColor: COLORS.exports },
-      ],
-    },
-    options: barOptions(title, "Score"),
-  });
-}
-
-function radarOptions(title, max) {
-  return {
-    responsive: true,
-    maintainAspectRatio: false,
+  if (!labels.length) return chartEmpty(id, "No observations for this selection.");
+  const opts = barOptions(title, xTitle, {
     plugins: {
-      legend: { position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 3 } },
+      legend: { position: "top", align: "end", labels: { boxWidth: 10, boxHeight: 8 } },
       title: { display: !!title, text: title, color: COLORS.text, font: { size: 12, weight: "500" } },
-      tooltip: { backgroundColor: "#11120f", borderColor: "#55564f", borderWidth: 1 },
-    },
-    scales: {
-      r: {
-        suggestedMin: 0,
-        suggestedMax: max,
-        angleLines: { color: COLORS.grid },
-        grid: { color: COLORS.grid },
-        pointLabels: { color: COLORS.text },
-        ticks: { color: COLORS.muted, backdropColor: "transparent" },
+      tooltip: {
+        backgroundColor: "#11120f", borderColor: "#55564f", borderWidth: 1,
+        callbacks: { label: item => `${item.dataset.label}: ${format(item.parsed.x)}` },
       },
     },
-  };
-}
-
-function renderRiskRadar(scores, label) {
-  const ctx = canvas("risk-chart");
-  if (!ctx) return;
-  const rows = Array.isArray(scores) ? scores : [];
-  if (!rows.length) return chartEmpty("risk-chart", "No pressure-score data.");
-  chartStore["risk-chart"] = new Chart(ctx, {
+  });
+  if (stacked) {
+    opts.scales.x.stacked = true;
+    opts.scales.y.stacked = true;
+  }
+  chartStore[id] = new Chart(ctx, {
     type: "bar",
     data: {
-      labels: rows.map(row => row.label),
-      datasets: [{
-        label,
-        data: rows.map(row => row.score ?? null),
-        backgroundColor: rows.map(row => {
-          const score = Number(row.score);
-          if (!Number.isFinite(score)) return COLORS.grid;
-          if (score >= 70) return COLORS.danger;
-          if (score >= 40) return COLORS.warning;
-          return COLORS.exports;
-        }),
+      labels,
+      datasets: datasets.map(d => ({
+        label: d.label,
+        data: d.values,
+        backgroundColor: d.color,
+        borderColor: d.color,
         borderWidth: 0,
-      }],
+        barThickness: "flex",
+        maxBarThickness: 18,
+      })),
     },
-    options: barOptions("Diagnostic score (0-100)", "Normalized diagnostic score", {
-      scales: {
-        x: {
-          min: 0,
-          max: 100,
-          grid: { color: COLORS.grid },
-          ticks: { color: COLORS.text },
-          title: { display: true, text: "Higher = more observed pressure", color: COLORS.text },
-        },
-        y: { grid: { color: "rgba(0,0,0,0)" }, ticks: { color: COLORS.text } },
-      },
-      plugins: {
-        legend: { display: false },
-        title: { display: true, text: "Macro-fiscal diagnostics (0-100)", color: COLORS.text, font: { size: 12, weight: "500" } },
-        tooltip: {
-          backgroundColor: "#11120f",
-          borderColor: "#55564f",
-          borderWidth: 1,
-          callbacks: {
-            label: item => `Diagnostic: ${fmtPlain(item.parsed.x, 0)} / 100`,
-            afterLabel: item => {
-              const row = rows[item.dataIndex];
-              return [`Actual: ${row.actual}`, row.detail].filter(Boolean);
-            },
-          },
-        },
-      },
-    }),
-  });
-}
-
-function renderHealth(rows) {
-  const el = document.getElementById("health-grid");
-  if (!el) return;
-  if (!rows || !rows.length) {
-    el.innerHTML = `<div class="empty-state">No coverage summary available.</div>`;
-    return;
-  }
-  el.innerHTML = rows.map(row => `
-    <div class="health-card">
-      <div class="lbl">${escapeHTML(row.label)}</div>
-      <div class="val">${escapeHTML(row.value)}</div>
-      <div class="desc">${escapeHTML(row.description)}</div>
-    </div>
-  `).join("");
-}
-
-function renderProducts(rows, flow) {
-  const container = document.getElementById("products-treemap");
-  if (!container) return;
-  container.innerHTML = "";
-
-  const items = rows
-    .slice(0, 8)
-    .map(r => ({
-      name: r.hs2_description || `HS ${r.hs2_code}`,
-      value: numericOrNull(r.trade_value_billions_usd) || 0,
-      share: numericOrNull(r.hs2_share_pct) || 0,
-    }))
-    .filter(d => d.value > 0)
-    .sort((a, b) => b.value - a.value);
-
-  if (!items.length) return;
-
-  // Recursive binary-split treemap layout.
-  // Returns [{item, x, y, w, h}] with all coords in percentage units.
-  function layout(items, x, y, w, h) {
-    if (!items.length) return [];
-    if (items.length === 1) return [{ item: items[0], x, y, w, h }];
-    const tot = items.reduce((s, d) => s + d.value, 0);
-    let acc = 0, split = 1;
-    for (let i = 0; i < items.length - 1; i++) {
-      acc += items[i].value;
-      if (acc >= tot / 2) { split = i + 1; break; }
-    }
-    const g1 = items.slice(0, split);
-    const g2 = items.slice(split);
-    const r1 = g1.reduce((s, d) => s + d.value, 0) / tot;
-    if (w >= h) {
-      const w1 = w * r1;
-      return [...layout(g1, x, y, w1, h), ...layout(g2, x + w1, y, w - w1, h)];
-    } else {
-      const h1 = h * r1;
-      return [...layout(g1, x, y, w, h1), ...layout(g2, x, y + h1, w, h - h1)];
-    }
-  }
-
-  const cells = layout(items, 0, 0, 100, 100);
-
-  // Dark-to-light palette for each flow direction
-  const palettes = {
-    export: ["#0b3327","#0d4435","#106055","#137a6d","#179680","#1db896","#2dd4af","#5de0c3"],
-    import: ["#1a1640","#271f62","#342a86","#4437a8","#5748c5","#706bdc","#8f8aed","#b0adf7"],
-  };
-  const palette = palettes[flow] || palettes.export;
-
-  cells.forEach((cell, ci) => {
-    const { item, x, y, w, h } = cell;
-    const bg = palette[Math.min(ci, palette.length - 1)];
-    const isLarge = h > 38;
-    const div = document.createElement("div");
-    div.className = "treemap-cell";
-    div.style.left = `${x.toFixed(2)}%`;
-    div.style.top = `${y.toFixed(2)}%`;
-    div.style.width = `${w.toFixed(2)}%`;
-    div.style.height = `${h.toFixed(2)}%`;
-    div.style.backgroundColor = bg;
-    if (isLarge) {
-      // Large dominant cell: center the label, no gradient needed
-      div.style.justifyContent = "center";
-      div.style.alignItems = "center";
-      div.style.textAlign = "center";
-    } else {
-      // Smaller cells: gradient darkens bottom so label is legible
-      div.style.backgroundImage = "linear-gradient(to bottom, transparent 40%, rgba(0,0,0,0.45))";
-    }
-    div.title = `${item.name}\n${shortMoneyB(item.value)} · ${fmtPct(item.share)} of ${flow}s`;
-
-    if (w > 9 && h > 10) {
-      const nameEl = document.createElement("div");
-      nameEl.className = "tm-name";
-      if (isLarge) nameEl.style.fontSize = "15px";
-      nameEl.textContent = item.name;
-      div.appendChild(nameEl);
-    }
-    if (w > 12 && h > 20) {
-      const metaEl = document.createElement("div");
-      metaEl.className = "tm-meta";
-      if (isLarge) metaEl.style.marginTop = "4px";
-      metaEl.textContent = `${shortMoneyB(item.value)} · ${fmtPct(item.share)}`;
-      div.appendChild(metaEl);
-    }
-    container.appendChild(div);
+    options: opts,
   });
 }
