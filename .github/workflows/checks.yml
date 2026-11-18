@@ -1,0 +1,31 @@
+name: Data contract checks
+
+# Runs on every branch except main (main is covered by the deploy workflow).
+# No secrets, no deployment.
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+      - name: Validate frontend JavaScript
+        run: |
+          node --check static/js/charts.js
+          node --check static/js/app_static.js
+      - name: Exact-identity contract checks on static data
+        run: python scripts/check_static_contract.py
+      - name: Contract checks catch known defects
+        run: python scripts/test_contract_mutations.py

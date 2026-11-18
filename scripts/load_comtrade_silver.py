@@ -215,6 +215,7 @@ def load_and_aggregate(jsonl_path: str):
     # coverage_raw[(reporter, year)] → count of non-aggregate rows
     coverage_raw: dict = collections.defaultdict(int)
     reporters: set[str] = set()
+    seen_keys: set[tuple] = set()
 
     with open(jsonl_path) as f:
         for i, line in enumerate(f):
@@ -224,12 +225,26 @@ def load_and_aggregate(jsonl_path: str):
             reporters.add(reporter)
 
             for row in d.get("payload", []):
-                # All rows in this file are W00 (world-total), which is what the
-                # HS2 product-structure chart needs. The Comtrade API changed its
-                # is_aggregate flag for W00 rows between extractions: 1993-2016
-                # records have is_aggregate=False, 2017+ have is_aggregate=True.
-                # We skip the is_aggregate check entirely since there are no
-                # bilateral (non-W00) rows in this file to accidentally include.
+                # Comtrade rows carry customs-procedure, mode-of-transport and
+                # second-partner dimensions. Summing across them double-counts
+                # (measured Nov 2026: Ghana 2023 HS2 export sum was ~4x the
+                # same-provider TOTAL; the extractor had dropped these dims). Only pinned total slices are accepted;
+                # snapshots that lack these fields cannot be validated and must
+                # stay quarantined rather than be summed.
+                dims = (row.get("partner2_code"), row.get("customs_code"), row.get("mot_code"))
+                if None in dims:
+                    raise SystemExit(
+                        "Comtrade snapshot lacks partner2/customs/mot dimensions; "
+                        "it cannot be validated and must remain quarantined. "
+                        "Re-extract with extraction/extract/comtrade_extract.py."
+                    )
+                if (int(dims[0]), str(dims[1]), int(dims[2])) != (0, "C00", 0):
+                    continue
+                dup_key = (reporter, year, row.get("flow"), str(row.get("cmd_code")),
+                           row.get("partner_code"), row.get("classification"))
+                if dup_key in seen_keys:
+                    raise SystemExit(f"Duplicate Comtrade observation key {dup_key}; refusing to sum duplicates.")
+                seen_keys.add(dup_key)
 
                 coverage_raw[(reporter, year)] += 1
 
@@ -464,7 +479,7 @@ SELECT * FROM final
 def main():
     require_dbx_config(DBX, "host", "warehouse", "token")
     pat = _get_pat()
-    print(f"PAT loaded (ends ...{pat[-6:]})\n")
+    print("Databricks credentials loaded (value not printed).\n")
 
     # --- Step 1: Aggregate locally ---
     hs2_records, coverage_records = load_and_aggregate(JSONL_PATH)

@@ -3,6 +3,9 @@
 Trigger one-time Databricks job runs for notebooks 14 and 15 (gold layer rebuild)
 using the Jobs API v2.1 with serverless compute.
 
+Safety: serverless only. There is intentionally no fallback to a classic
+(paid) cluster, and no part of any credential is ever printed.
+
 Usage:
     python scripts/rebuild_gold_dashboard.py
 
@@ -63,18 +66,12 @@ def submit_notebook_run(pat: str, run_name: str, notebook_path: str) -> str:
     }
     resp = requests.post(url, headers=_headers(pat), json=payload, timeout=30)
     if not resp.ok:
-        body = resp.text
-        # Try with a minimal classic cluster if serverless is not available
-        print(f"  Serverless attempt failed ({resp.status_code}): {body[:200]}")
-        print("  Retrying with a minimal classic cluster spec ...")
-        payload["tasks"][0]["new_cluster"] = {
-            "spark_version": "15.4.x-scala2.12",
-            "node_type_id": "m5.xlarge",
-            "num_workers": 1,
-            "aws_attributes": {"availability": "SPOT_WITH_FALLBACK"},
-        }
-        resp = requests.post(url, headers=_headers(pat), json=payload, timeout=30)
-        resp.raise_for_status()
+        # Deliberately NO fallback to a classic (paid) cluster. Serverless only;
+        # if it is unavailable the run must fail loudly and a human decides.
+        raise SystemExit(
+            f"Serverless notebook run submission failed (HTTP {resp.status_code}). "
+            "No classic-cluster fallback is attempted by design."
+        )
 
     run_id = resp.json()["run_id"]
     return str(run_id)
@@ -126,7 +123,7 @@ def poll_run(pat: str, run_id: str, notebook_label: str, poll_interval: int = 20
 def main() -> None:
     require_dbx_config(DBX, "host", "token", "user")
     pat = _get_pat()
-    print(f"PAT loaded (ends ...{pat[-6:]})\n")
+    print("Databricks credentials loaded (value not printed).\n")
 
     for nb in notebooks(DBX["user"]):
         print(f"Submitting: {nb['run_name']}")
