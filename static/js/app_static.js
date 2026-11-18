@@ -155,6 +155,8 @@ function scopeRow(year = State.year) {
       openness: r.trade_openness_pct_gdp,
       expPct: r.exports_pct_gdp,
       impPct: r.imports_pct_gdp,
+      balPct: r.trade_balance_pct_gdp,
+      historicalOverlap: r.historical_successor_overlap,
       topPartnerCode: r.top_partner_iso3,
       topPartnerName: r.top_partner_name,
       topShare: r.top_partner_share_of_world_pct,
@@ -174,6 +176,11 @@ function scopeRow(year = State.year) {
       conflictNote: r.acled_covered ? null : "not in ACLED coverage for this year",
       fsi: r.fsi_total_score,
       fsiReporting: r.fsi_total_score == null ? 0 : 1,
+      // A country contributes to a metric iff the metric is present.
+      contrib: Object.fromEntries(Object.entries({
+        trade: r.total_trade_billions_usd, gdp: r.gdp_current_usd_billions,
+        openness: r.trade_openness_pct_gdp, conflict: r.fatalities_per_million,
+      }).map(([k, v]) => [k, v == null ? [] : [State.country]])),
     };
   }
   const b = IDX.bloc[State.bloc]?.[year];
@@ -193,6 +200,8 @@ function scopeRow(year = State.year) {
     opennessCountries: b.openness_countries,
     expPct: b.exports_pct_gdp,
     impPct: b.imports_pct_gdp,
+    balPct: b.trade_balance_pct_gdp,
+    historicalOverlap: b.members.some(c => IDX.ct[c]?.[year]?.historical_successor_overlap),
     topPartnerCode: b.top_partner_code,
     topPartnerName: b.top_partner_name,
     topShare: b.top_partner_share_of_world_pct,
@@ -207,13 +216,17 @@ function scopeRow(year = State.year) {
     debt: b.gross_debt_pct_gdp_weighted,
     fiscal: b.net_lending_borrowing_pct_gdp_weighted,
     ca: b.current_account_pct_gdp_weighted,
-    debtReporting: b.gross_debt_reporting,
+    macroMembers: {
+      growth: b.growth_members, inflation: b.inflation_members, debt: b.gross_debt_members,
+      fiscal: b.fiscal_members, ca: b.current_account_members, pop: b.population_members,
+    },
     fatalitiesPm: b.fatalities_per_million,
     fatalities: b.fatalities,
     conflictReporting: b.conflict_reporting,
     conflictNote: b.conflict_reporting === 0 ? "no member in ACLED coverage for this year" : null,
     fsi: b.fsi_total_score_mean,
     fsiReporting: b.fsi_reporting,
+    contrib: { trade: b.trade_members, gdp: b.gdp_members, openness: b.openness_members, conflict: b.conflict_members },
   };
 }
 
@@ -223,6 +236,14 @@ function comparablePrevious(cur) {
   if (!prev) return null;
   if (cur.kind === "bloc" && prev.members.join("|") !== cur.members.join("|")) return null;
   return prev;
+}
+
+// Previous-year value only when the same countries contribute in both years.
+function matchedPrev(cur, prev, metric, field) {
+  if (!cur || !prev) return null;
+  const a = (cur.contrib?.[metric] || []).join("|");
+  const b = (prev.contrib?.[metric] || []).join("|");
+  return a && a === b ? prev[field] : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -367,35 +388,39 @@ function renderOverview() {
   }
   const n = cur.memberCount;
   kpi("kpi-trade", "Goods trade", shortMoneyB(cur.trade),
-    `${delta(cur.trade, prev?.trade)} exports + imports, IMF World ${cur.kind === "bloc" ? reportingChip(cur.tradeReporting, n) : ""}`);
+    `${delta(cur.trade, matchedPrev(cur, prev, "trade", "trade"))} exports + imports, IMF World ${cur.kind === "bloc" ? reportingChip(cur.tradeReporting, n) : ""}`);
   kpi("kpi-open", "Trade openness", fmtPct(cur.openness, 1),
-    `${delta(cur.openness, prev?.openness, { kind: "abs", suffix: " pp" })} % of GDP`);
+    `${delta(cur.openness, matchedPrev(cur, prev, "openness", "openness"), { kind: "abs", suffix: " pp" })} % of GDP ${cur.kind === "bloc" ? reportingChip(cur.opennessCountries, n) : ""}`);
   const tp = cur.topPartnerCode ? partnerLabel(cur.topPartnerCode, cur.topPartnerName) : "--";
   kpi("kpi-partner", "Top partner", escapeHTML(tp),
     cur.topShare == null ? "share unavailable (incomplete reporting)" : `${fmtPct(cur.topShare)} of trade · top 3: ${fmtPct(cur.top3Share)}`);
   kpi("kpi-hhi", "Partner concentration", fmtPlain(cur.hhi, 3),
     `HHI over named partners · ${cur.namedCoverage == null ? "coverage n/a" : `named partners = ${fmtPct(cur.namedCoverage, 0)} of World`}`);
   kpi("kpi-gdp", "GDP", shortMoneyB(cur.gdp),
-    `${delta(cur.gdp, prev?.gdp)} current USD ${cur.kind === "bloc" ? reportingChip(cur.gdpReporting, n) : ""}`);
+    `${delta(cur.gdp, matchedPrev(cur, prev, "gdp", "gdp"))} current USD ${cur.kind === "bloc" ? reportingChip(cur.gdpReporting, n) : ""}`);
   kpi("kpi-conflict", "Conflict fatalities", cur.fatalitiesPm == null ? "--" : `${fmtPlain(cur.fatalitiesPm, 1)}<small>/m</small>`,
     cur.conflictNote ? escapeHTML(cur.conflictNote)
       : `${fmtNumber(cur.fatalities)} fatalities in ${State.year} (ACLED) ${cur.kind === "bloc" ? reportingChip(cur.conflictReporting, n) : ""}`);
 
+  const mm = cur.macroMembers || {};
+  const chip = key => (cur.kind === "bloc" && mm[key] ? reportingChip(mm[key].length, n) : "");
   const econ = [
-    ["Population", cur.pop == null ? "--" : `${fmtPlain(cur.pop, 1)}M`, "millions"],
-    ["GDP per capita", fmtUsdPc(cur.gdppc), "current USD"],
-    ["Real GDP growth", fmtPct(cur.growth), cur.kind === "bloc" ? "GDP-weighted" : "annual %"],
-    ["Inflation", fmtPct(cur.inflation), cur.kind === "bloc" ? "GDP-weighted, avg CPI" : "avg consumer prices"],
-    ["Govt gross debt", fmtPct(cur.debt), cur.kind === "bloc" ? `% of GDP, GDP-weighted${cur.debtReporting != null && cur.debtReporting < n ? ` (${cur.debtReporting}/${n})` : ""}` : "% of GDP"],
-    ["Fiscal balance", fmtPct(cur.fiscal), "net lending/borrowing, % of GDP"],
-    ["Current account", fmtPct(cur.ca), "% of GDP"],
-    ["Exports / GDP", fmtPct(cur.expPct), "goods, IMF World"],
-    ["Imports / GDP", fmtPct(cur.impPct), "goods, IMF World"],
+    ["Population", cur.pop == null ? "--" : `${fmtPlain(cur.pop, 1)}M`, "millions", chip("pop")],
+    ["GDP per capita", fmtUsdPc(cur.gdppc), cur.kind === "bloc" && cur.gdppc == null && cur.gdp != null ? "not shown: GDP and population cover different members" : "current USD", ""],
+    ["Real GDP growth", fmtPct(cur.growth), cur.kind === "bloc" ? "GDP-weighted" : "annual %", chip("growth")],
+    ["Inflation", fmtPct(cur.inflation), cur.kind === "bloc" ? "GDP-weighted, avg CPI" : "avg consumer prices", chip("inflation")],
+    ["Govt gross debt", fmtPct(cur.debt), cur.kind === "bloc" ? "% of GDP, GDP-weighted" : "% of GDP", chip("debt")],
+    ["Fiscal balance", fmtPct(cur.fiscal), cur.kind === "bloc" ? "net lending/borrowing, % of GDP, GDP-weighted" : "net lending/borrowing, % of GDP", chip("fiscal")],
+    ["Current account", fmtPct(cur.ca), cur.kind === "bloc" ? "% of GDP, GDP-weighted" : "% of GDP", chip("ca")],
+    ["Exports / GDP", fmtPct(cur.expPct), "goods, IMF World", cur.kind === "bloc" ? reportingChip(cur.opennessCountries, n) : ""],
+    ["Imports / GDP", fmtPct(cur.impPct), "goods, IMF World", cur.kind === "bloc" ? reportingChip(cur.opennessCountries, n) : ""],
     ["FSI total", cur.fsi == null ? "--" : fmtPlain(cur.fsi, 1),
-      cur.fsi == null ? `no FSI edition for ${State.year} in the data` : (cur.kind === "bloc" ? `mean of ${cur.fsiReporting}/${n}, ${State.year} edition` : `${State.year} edition`)],
+      cur.fsi == null ? `no FSI edition for ${State.year} in the data` : (cur.kind === "bloc" ? `mean, ${State.year} edition` : `${State.year} edition`),
+      cur.kind === "bloc" && cur.fsi != null ? reportingChip(cur.fsiReporting, n) : ""],
   ];
-  document.getElementById("econ-grid").innerHTML = econ.map(([l, v, d]) =>
-    `<div class="econ-card"><div class="lbl">${escapeHTML(l)}</div><div class="val">${v}</div><div class="desc">${escapeHTML(d)}</div></div>`).join("");
+  document.getElementById("econ-scope").textContent = `${scopeName()}, ${State.year}`;
+  document.getElementById("econ-grid").innerHTML = econ.map(([l, v, d, c]) =>
+    `<div class="econ-card"><div class="lbl">${escapeHTML(l)}</div><div class="val">${v}</div><div class="desc">${escapeHTML(d)} ${c || ""}</div></div>`).join("");
 }
 
 function renderMapPanel() {
@@ -429,6 +454,9 @@ function renderPartners() {
       ? "Partners are named economies; IMF regional aggregates are excluded."
       : "Bloc partners aggregate all members' named partners. Members' combined trade includes trade between members, marked 'member'.";
   }
+  if (cur?.historicalOverlap) {
+    note.textContent += " In this year the source reports trade with both a former economy (e.g. USSR, Yugoslavia, Czechoslovakia) and one of its successors, so named partners may overlap; values are shown as published.";
+  }
 
   // Dependence trend
   const series = YEARS.map(y => scopeRowAt(y));
@@ -437,10 +465,13 @@ function renderPartners() {
     <div class="diag-chip"><span class="lbl">Top partner ${State.year}</span><span class="val">${escapeHTML(cur.topPartnerCode ? partnerLabel(cur.topPartnerCode, cur.topPartnerName) : "--")}</span><span class="desc">${fmtPct(cur.topShare)} of World trade</span></div>
     <div class="diag-chip"><span class="lbl">Top 3 partners</span><span class="val">${fmtPct(cur.top3Share)}</span><span class="desc">of World trade</span></div>
     <div class="diag-chip"><span class="lbl">Named coverage</span><span class="val">${fmtPct(cur.namedCoverage, 0)}</span><span class="desc">named partners vs World</span></div>` : "";
+  document.getElementById("dependence-break").textContent = State.country
+    ? ""
+    : "Bloc series use each year's membership; 2024 is a composition break (ECOWAS 15 to 12 members, AES cohort starts).";
   renderLines("dependence-chart", YEARS, [
     { label: "Top partner share", color: COLORS.warning, values: series.map(s => s?.topShare ?? null) },
     { label: "Top 3 share", color: COLORS.imports, values: series.map(s => s?.top3Share ?? null) },
-  ], { yTitle: "% of World trade", format: v => fmtPct(v), selectedYear: State.year, yMin: 0 });
+  ], { yTitle: "% of World trade", format: v => fmtPct(v), selectedYear: State.year, yMin: 0, breakYear: State.country ? null : 2024 });
 
   // HHI: bloc-grain lines for all blocs; selected country overlaid
   const hhiSeries = BLOCS.map(b => ({
@@ -453,7 +484,7 @@ function renderPartners() {
     hhiSeries.push({ label: countryName(State.country), color: COLORS.text, width: 2.6,
       values: YEARS.map(y => IDX.ct[State.country]?.[y]?.total_trade_partner_hhi ?? null) });
   }
-  renderLines("hhi-chart", YEARS, hhiSeries, { yTitle: "HHI (0–1)", format: v => fmtPlain(v, 3), selectedYear: State.year, yMin: 0 });
+  renderLines("hhi-chart", YEARS, hhiSeries, { yTitle: "HHI (0–1)", format: v => fmtPlain(v, 3), selectedYear: State.year, yMin: 0, breakYear: 2024 });
   document.getElementById("hhi-sub").textContent = State.country
     ? `${countryName(State.country)}: HHI over its named partners. Bloc lines: HHI over members' combined named partners.`
     : "Bloc lines: HHI over members' combined named partners (includes trade between members). Not a risk rating.";
@@ -484,7 +515,7 @@ function renderExposure() {
       values: YEARS.map(y => IDX.ct[State.country]?.[y]?.trade_openness_pct_gdp ?? null) });
   }
   document.getElementById("openness-title").textContent = `Trade openness · ${State.country ? countryName(State.country) + " vs blocs" : "blocs"}`;
-  renderLines("openness-chart", YEARS, openSeries, { yTitle: "% of GDP", format: v => fmtPct(v, 1), selectedYear: State.year, yMin: 0 });
+  renderLines("openness-chart", YEARS, openSeries, { yTitle: "% of GDP", format: v => fmtPct(v, 1), selectedYear: State.year, yMin: 0, breakYear: 2024 });
 
   // Growth index: fixed cohort = selected scope's members in the selected year
   const cohort = State.country ? [State.country] : membersOf(State.bloc, State.year);
@@ -506,18 +537,25 @@ function renderExposure() {
 
   const cur = scopeRow();
   document.getElementById("exposure-title").textContent = `${scopeName()} · exposure profile · ${State.year}`;
-  const balPct = cur && cur.balance != null && cur.gdp ? cur.balance / cur.gdp * 100 : null;
+  // Balance % of GDP comes pre-computed over the same contributors as exports/imports % of GDP.
+  const balPct = cur?.balPct ?? null;
   renderBars("exposure-chart", ["Exports", "Imports", "Trade balance"], [{
     label: "% of GDP",
     color: [COLORS.exports, COLORS.imports, balPct != null && balPct < 0 ? COLORS.danger : COLORS.success],
     values: [cur?.expPct ?? null, cur?.impPct ?? null, balPct],
   }], { xTitle: "% of GDP", format: v => fmtPct(v, 1) });
+  const sub = document.querySelector("#exposure-title + .sub");
+  if (sub) {
+    sub.textContent = cur?.kind === "bloc"
+      ? `Exports, imports and trade balance as % of GDP, ${State.year} · ${cur.opennessCountries}/${cur.memberCount} members with both trade and GDP`
+      : `Exports, imports and trade balance as % of GDP, ${State.year}`;
+  }
 }
 
 function renderProductsPanel() {
   const p = DB.products || {};
   document.getElementById("products-reason").textContent = p.reason || "Product data unavailable.";
-  document.getElementById("products-steps").innerHTML = (p.revalidation || []).map(s => `<li>${escapeHTML(s)}</li>`).join("");
+
 }
 
 function renderContext() {
@@ -583,7 +621,7 @@ function renderSources() {
       <tbody>
         <tr><td>IMF International Merchandise Trade Statistics (IMTS)</td><td>Goods exports (FOB), imports (CIF), named partners</td><td>${p.years[0]}–${p.years[1]}, annual</td><td>extracted ${dates(p.imts?.extracted_at)} · sha256 ${sha("imts")}</td></tr>
         <tr><td>IMF World Economic Outlook (WEO)</td><td>GDP, population, growth, inflation, debt, fiscal and current-account balances</td><td>${p.years[0]}–${p.years[1]}, annual</td><td>extracted ${dates(p.weo?.extracted_at)} · country update dates ${escapeHTML(cudRange)} · release vintage ${escapeHTML(p.weo?.release_vintage || "not recorded")} · sha256 ${sha("weo")}</td></tr>
-        <tr><td>ACLED</td><td>Conflict events and fatalities</td><td>from first covered year per country (mostly 1997; Cabo Verde 2020) to ${p.years[1]}</td><td>extracted ${dates(p.acled?.extracted_at_range)} · ${fmtNumber(p.acled?.events)} events · sha256 ${sha("acled")}</td></tr>
+        <tr><td>ACLED</td><td>Conflict events and fatalities</td><td>from the first year with an observed event per country (1997 for most; Cabo Verde 2020) to ${p.years[1]}. This is a coverage heuristic, not ACLED's confirmed coverage start.</td><td>extracted ${dates(p.acled?.extracted_at_range)} · ${fmtNumber(p.acled?.events)} events · sha256 ${sha("acled")}</td></tr>
         <tr><td>Fund for Peace, Fragile States Index</td><td>Fragility total and pillars</td><td>editions ${p.fsi?.years?.[0]}–${p.fsi?.years?.[1]}</td><td>extracted ${dates(p.fsi?.extracted_at)} · sha256 ${sha("fsi")}</td></tr>
         <tr><td>UN Comtrade</td><td>Product (HS2) structure</td><td colspan="2"><b>Quarantined.</b> ${escapeHTML(p.products?.reason || "")}</td></tr>
       </tbody>
@@ -595,9 +633,16 @@ function renderSources() {
       <div><h4>Bloc figures</h4><p>Bloc totals are sums of members' IMF World totals and include trade between members. Openness divides trade by GDP over the same reporting members. Ratios such as debt and growth are GDP-weighted. Each bloc figure states how many members report it, and year-on-year changes are only shown when membership is unchanged.</p></div>
       <div><h4>Conflict</h4><p>${escapeHTML(p.acled?.coverage_rule || "")} Rates are fatalities (or events) divided by population in millions for the same year. ${escapeHTML(p.acled?.hotspot_rule || "")}</p></div>
       <div><h4>Fragility</h4><p>FSI values appear only for the edition year they belong to; earlier years are never filled with later editions. The context panel shows each country's latest loaded edition with its year. ${escapeHTML(p.fsi?.note || "")}${(p.fsi_source_inconsistencies || []).length ? ` Source note: ${p.fsi_source_inconsistencies.map(f => `${escapeHTML(f.country_iso3)} ${f.year} indicators sum to ${f.indicator_sum} vs published total ${f.published_total}`).join("; ")}.` : ""}</p></div>
+      <div><h4>Former and successor economies</h4><p>Partner rows keep former or combined economies (such as the USSR, Yugoslavia, Czechoslovakia, Belgium-Luxembourg) as published. In ${fmtNumber((p.imts?.historical_successor_overlaps || []).length)} reporter-year-flows the source also reports a successor in the same year (${fmtNumber((p.imts?.historical_successor_overlaps || []).filter(o => o.values_within_half_percent).length)} of them with nearly identical values). Named partners are therefore not guaranteed to be geographically disjoint in those years; affected views say so. Values are not removed or redistributed. World totals are unaffected.</p></div>
       <div><h4>Flagged source values</h4><p>Openness above 200% of GDP (kept as published, not corrected): ${outliers || "none"}. Named-partner coverage differs from the World total by more than 2% in ${fmtNumber(p.imts?.country_years_named_coverage_off_by_more_than_2pct)} country-years (see the coverage chart).</p></div>
     </div>
-    <p class="note">Rebuild: <code>python scripts/offline_rebuild.py --raw-dir &lt;raw snapshots&gt;</code>, then <code>python scripts/check_static_contract.py --raw-dir &lt;raw snapshots&gt;</code>. Data files and derived datasets remain subject to their providers' terms.</p>`;
+    <details class="tech-details">
+      <summary>Technical details for maintainers</summary>
+      <p>Product data revalidation:</p>
+      <ol>${(DB.products?.revalidation || []).map(s => `<li>${escapeHTML(s)}</li>`).join("")}</ol>
+      <p>Rebuild: <code>python scripts/offline_rebuild.py --raw-dir &lt;raw snapshots&gt;</code>, then <code>python scripts/check_static_contract.py --raw-dir &lt;raw snapshots&gt;</code>.</p>
+    </details>
+    <p class="note">Data files and derived datasets remain subject to their providers' terms.</p>`;
 }
 
 function render() {

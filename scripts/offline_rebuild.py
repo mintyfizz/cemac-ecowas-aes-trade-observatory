@@ -110,7 +110,7 @@ def load_imts(path: Path):
     # Per reporter-year aggregates
     world = collections.defaultdict(dict)        # (rep, yr) -> {ind: value}
     named = collections.defaultdict(lambda: collections.defaultdict(lambda: [None, None]))  # (rep,yr)->{cp:[x,m]}
-    unalloc = collections.defaultdict(lambda: [0.0, 0.0, False])
+    unalloc = collections.defaultdict(lambda: [[], [], False])
     for (rep, cp, ind, yr), v in obs.items():
         role = roles[cp]["role"]
         i = 0 if ind == D.EXPORT_INDICATOR else 1
@@ -121,8 +121,24 @@ def load_imts(path: Path):
                 continue  # self-trade is not a partner
             named[(rep, yr)][cp][i] = v
         elif role == "unallocated":
-            unalloc[(rep, yr)][i] += v
+            unalloc[(rep, yr)][i].append(v)
             unalloc[(rep, yr)][2] = True
+    overlaps = []
+    for (rep, yr), cps in sorted(named.items()):
+        for former, succ in sorted(D.HISTORICAL_SUCCESSORS.items()):
+            if former not in cps:
+                continue
+            for i, flow in ((0, "exports"), (1, "imports")):
+                fv = cps[former][i]
+                hits = sorted(s for s in succ if s in cps and (cps[s][i] or 0) > 0)
+                if fv and fv > 0 and hits:
+                    sv = D.fsum(cps[s][i] for s in hits)
+                    overlaps.append({"reporter_iso3": rep, "year": yr, "flow": flow, "former_code": former,
+                                     "former_value_usd": fv, "successor_codes": hits,
+                                     "successor_value_usd": sv,
+                                     # Same value under both codes (within 0.5%) suggests the flow
+                                     # may be reported twice; flagged only, never altered.
+                                     "values_within_half_percent": abs(sv - fv) <= 0.005 * max(sv, fv)})
     audit = collections.Counter()
     for cp, n in seen_codes.items():
         audit[roles[cp]["role"]] += n
@@ -138,6 +154,7 @@ def load_imts(path: Path):
             c for c in seen_codes if roles[c]["historical_or_combined"] == "yes"
         ),
         "extracted_at": sorted(e for e in extracted if e),
+        "historical_successor_overlaps": overlaps,
     }
     return world, named, unalloc, roles, meta
 
@@ -236,9 +253,10 @@ def load_acled(path: Path):
         "extracted_at_range": [min(e for e in extracted if e), max(e for e in extracted if e)],
         "coverage_start_by_country": dict(sorted(first_year.items())),
         "coverage_rule": (
-            "A country-year is treated as covered from the first year in which ACLED returned any "
-            "event for that country. Covered years whose query returned no events are recorded as "
-            "0 events; earlier years are null (not covered or unknown), never 0."
+            "Coverage heuristic, not confirmed provider coverage: a country-year counts as observed "
+            "from the first year in which the saved ACLED queries returned any event for that country. "
+            "Within that interval, years whose saved query returned no events are recorded as 0; "
+            "earlier years are null (unknown), never 0."
         ),
         "violent_event_types": list(D.VIOLENT_EVENT_TYPES),
     }
@@ -282,7 +300,7 @@ def fsi_record(v: dict) -> dict:
     out = {col: v.get(code) for code, col in D.FSI_COLUMNS.items()}
     for pillar, codes in D.FSI_PILLARS.items():
         parts = [v.get(c) for c in codes]
-        out[pillar] = None if any(p is None for p in parts) else round(sum(parts), 6)
+        out[pillar] = None if any(p is None for p in parts) else round(D.fsum(parts), 6)
     return out
 
 
@@ -300,6 +318,7 @@ def build(raw_dir: Path, out_dir: Path) -> dict:
     acled_cy, acled_hot, acled_queried, acled_first, acled_meta = load_acled(paths["acled"])
     fsi_vals, fsi_rank, fsi_meta = load_fsi(paths["fsi"])
 
+    overlap_keys = {(o["reporter_iso3"], o["year"]) for o in imts_meta["historical_successor_overlaps"]}
     country_rows = []
     partner_out = []
     named_by_cy = {}
@@ -316,12 +335,12 @@ def build(raw_dir: Path, out_dir: Path) -> dict:
             wt = add(wx, wm)
             prow = partner_rows(named.get((iso3, yr), {}), roles)
             named_by_cy[(iso3, yr)] = prow
-            nx = sum(r["x"] or 0.0 for r in prow) if prow else None
-            nm = sum(r["m"] or 0.0 for r in prow) if prow else None
+            nx = D.fsum(r["x"] or 0.0 for r in prow) if prow else None
+            nm = D.fsum(r["m"] or 0.0 for r in prow) if prow else None
             nt = add(nx, nm)
             ua = unalloc.get((iso3, yr))
             top = prow[0] if prow else None
-            top3 = sum(r["t"] for r in prow[:3]) if prow else None
+            top3 = D.fsum(r["t"] for r in prow[:3]) if prow else None
 
             covered = iso3 in acled_first and yr >= acled_first[iso3]
             c = acled_cy.get((iso3, yr))
@@ -366,6 +385,7 @@ def build(raw_dir: Path, out_dir: Path) -> dict:
                 "trade_openness_pct_gdp": pct(wt, gdp),
                 "exports_pct_gdp": pct(wx, gdp),
                 "imports_pct_gdp": pct(wm, gdp),
+                "trade_balance_pct_gdp": pct(sub(wx, wm), gdp),
                 # Named-partner universe (disjoint from World and aggregates)
                 "named_partner_count": len(prow),
                 "named_exports_billions_usd": bn(nx),
@@ -373,12 +393,13 @@ def build(raw_dir: Path, out_dir: Path) -> dict:
                 "named_total_trade_billions_usd": bn(nt),
                 "world_minus_named_total_trade_billions_usd": bn(sub(wt, nt)),
                 "named_partner_coverage_pct": pct(nt, wt),
-                "unallocated_total_trade_billions_usd": bn(ua[0] + ua[1]) if ua and ua[2] else None,
+                "unallocated_total_trade_billions_usd": bn(D.fsum(ua[0] + ua[1])) if ua and ua[2] else None,
                 "total_trade_partner_hhi": D.hhi(r["t"] for r in prow),
                 "top_partner_iso3": top["code"] if top else None,
                 "top_partner_name": top["name"] if top else None,
                 "top_partner_share_of_world_pct": pct(top["t"], wt) if top else None,
                 "top3_partner_share_of_world_pct": pct(top3, wt) if prow else None,
+                "historical_successor_overlap": (iso3, yr) in overlap_keys,
                 # ACLED
                 "acled_covered": covered,
                 "total_events": ev,
@@ -423,7 +444,10 @@ def build(raw_dir: Path, out_dir: Path) -> dict:
 
             def ssum(col, rs=rows):
                 vals = [r[col] for r in rs if r[col] is not None]
-                return (sum(vals) if vals else None), len(vals)
+                return (D.fsum(vals) if vals else None), len(vals)
+
+            def contributors(*cols):
+                return [r["country_iso3"] for r in rows if all(r[c] is not None for c in cols)]
 
             gdp, n_gdp = ssum("gdp_current_usd_billions")
             popm, n_pop = ssum("population_millions")
@@ -431,13 +455,13 @@ def build(raw_dir: Path, out_dir: Path) -> dict:
             tm, _ = ssum("imports_billions_usd")
             tt, n_tt = ssum("total_trade_billions_usd")
             both = [r for r in rows if r["total_trade_billions_usd"] is not None and r["gdp_current_usd_billions"]]
-            open_num = sum(r["total_trade_billions_usd"] for r in both)
-            open_den = sum(r["gdp_current_usd_billions"] for r in both)
+            open_num = D.fsum(r["total_trade_billions_usd"] for r in both)
+            open_den = D.fsum(r["gdp_current_usd_billions"] for r in both)
 
             def gdp_weighted(col):
                 rs = [r for r in rows if r[col] is not None and r["gdp_current_usd_billions"]]
-                den = sum(r["gdp_current_usd_billions"] for r in rs)
-                return (sum(r[col] * r["gdp_current_usd_billions"] for r in rs) / den if den else None), len(rs)
+                den = D.fsum(r["gdp_current_usd_billions"] for r in rs)
+                return (D.fsum(r[col] * r["gdp_current_usd_billions"] for r in rs) / den if den else None), [r["country_iso3"] for r in rs]
 
             debt, n_debt = gdp_weighted("gross_debt_pct_gdp_imf")
             growth, n_growth = gdp_weighted("real_gdp_growth_pct_imf")
@@ -449,24 +473,25 @@ def build(raw_dir: Path, out_dir: Path) -> dict:
             fat = sum(r["fatalities"] for r in conf) if conf else None
             vev = sum(r["violent_events"] for r in conf) if conf else None
             ev = sum(r["total_events"] for r in conf) if conf else None
-            conf_pop = sum(r["population_millions"] for r in conf) if conf else None
+            conf_pop = D.fsum(r["population_millions"] for r in conf) if conf else None
 
             fsi = [r["fsi_total_score"] for r in rows if r["fsi_total_score"] is not None]
 
             # Bloc partner distribution: aggregate the FULL named universe of members.
-            agg = collections.defaultdict(lambda: [0.0, 0.0, "", False])
+            agg = collections.defaultdict(lambda: [[], [], "", False])
             for c in members:
                 for p in named_by_cy[(c, yr)]:
                     a = agg[p["code"]]
-                    a[0] += p["x"] or 0.0
-                    a[1] += p["m"] or 0.0
+                    a[0].append(p["x"] or 0.0)
+                    a[1].append(p["m"] or 0.0)
                     a[2] = p["name"]
                     a[3] = p["historical"]
             plist = sorted(
-                ({"code": k, "name": v[2], "historical": v[3], "x": v[0], "m": v[1], "t": v[0] + v[1]} for k, v in agg.items()),
+                ({"code": k, "name": v[2], "historical": v[3], "x": D.fsum(v[0]), "m": D.fsum(v[1]),
+                  "t": D.fsum(v[0] + v[1])} for k, v in agg.items()),
                 key=lambda r: (-r["t"], r["code"]),
             )
-            named_total = sum(p["t"] for p in plist) if plist else None
+            named_total = D.fsum(p["t"] for p in plist) if plist else None
             tt_usd = None if tt is None else tt * 1e9
             for rank_i, p in enumerate(plist[: D.TOP_N_PARTNERS], start=1):
                 bloc_partner_out.append({
@@ -495,6 +520,9 @@ def build(raw_dir: Path, out_dir: Path) -> dict:
                 "gdp_reporting": n_gdp,
                 "trade_reporting": n_tt,
                 "population_reporting": n_pop,
+                "gdp_members": contributors("gdp_current_usd_billions"),
+                "trade_members": contributors("total_trade_billions_usd"),
+                "population_members": contributors("population_millions"),
                 "gdp_current_usd_billions": gdp,
                 "population_millions": popm,
                 "gdp_per_capita_current_usd": (gdp * 1e9 / (popm * 1e6)) if (gdp is not None and popm and n_gdp == n_pop) else None,
@@ -504,20 +532,24 @@ def build(raw_dir: Path, out_dir: Path) -> dict:
                 "trade_balance_billions_usd": sub(tx, tm),
                 "trade_openness_pct_gdp": pct(open_num, open_den) if both else None,
                 "openness_countries": len(both),
-                "exports_pct_gdp": pct(sum(r["exports_billions_usd"] for r in both), open_den) if both else None,
-                "imports_pct_gdp": pct(sum(r["imports_billions_usd"] for r in both), open_den) if both else None,
+                "openness_members": [r["country_iso3"] for r in both],
+                "exports_pct_gdp": pct(D.fsum(r["exports_billions_usd"] for r in both), open_den) if both else None,
+                "imports_pct_gdp": pct(D.fsum(r["imports_billions_usd"] for r in both), open_den) if both else None,
+                # Matched to the same contributors as exports/imports % of GDP.
+                "trade_balance_pct_gdp": pct(D.fsum(r["trade_balance_billions_usd"] for r in both), open_den) if both else None,
                 "named_total_trade_billions_usd": bn(named_total),
                 "named_partner_coverage_pct": pct(bn(named_total), tt) if complete_trade else None,
                 "bloc_partner_hhi": D.hhi(p["t"] for p in plist),
                 "top_partner_code": top["code"] if top else None,
                 "top_partner_name": top["name"] if top else None,
                 "top_partner_share_of_world_pct": pct(top["t"], tt_usd) if (top and complete_trade) else None,
-                "top3_partner_share_of_world_pct": pct(sum(p["t"] for p in plist[:3]), tt_usd) if (plist and complete_trade) else None,
-                "gross_debt_pct_gdp_weighted": debt, "gross_debt_reporting": n_debt,
-                "real_gdp_growth_pct_weighted": growth, "growth_reporting": n_growth,
-                "inflation_pct_weighted": infl, "inflation_reporting": n_infl,
-                "net_lending_borrowing_pct_gdp_weighted": fiscal, "fiscal_reporting": n_fiscal,
-                "current_account_pct_gdp_weighted": ca, "current_account_reporting": n_ca,
+                "top3_partner_share_of_world_pct": pct(D.fsum(p["t"] for p in plist[:3]), tt_usd) if (plist and complete_trade) else None,
+                "gross_debt_pct_gdp_weighted": debt, "gross_debt_members": n_debt,
+                "real_gdp_growth_pct_weighted": growth, "growth_members": n_growth,
+                "inflation_pct_weighted": infl, "inflation_members": n_infl,
+                "net_lending_borrowing_pct_gdp_weighted": fiscal, "fiscal_members": n_fiscal,
+                "current_account_pct_gdp_weighted": ca, "current_account_members": n_ca,
+                "conflict_members": [r["country_iso3"] for r in conf],
                 "conflict_reporting": len(conf),
                 "total_events": ev,
                 "violent_events": vev,
@@ -526,7 +558,8 @@ def build(raw_dir: Path, out_dir: Path) -> dict:
                 "violent_events_per_million": D.per_million(vev, conf_pop),
                 "fatalities_per_million": D.per_million(fat, conf_pop),
                 "fsi_reporting": len(fsi),
-                "fsi_total_score_mean": (sum(fsi) / len(fsi)) if fsi else None,
+                "fsi_members": [r["country_iso3"] for r in rows if r["fsi_total_score"] is not None],
+                "fsi_total_score_mean": (D.fsum(fsi) / len(fsi)) if fsi else None,
             })
 
     # ---------------- Hotspots: fixed window, one row per country x admin1 ----------------
@@ -574,12 +607,15 @@ def build(raw_dir: Path, out_dir: Path) -> dict:
         "status": "quarantined",
         "rows": [],
         "reason": (
-            "UN Comtrade HS2 values in the previous export were summed across customs-procedure, "
-            "mode-of-transport and second-partner breakdown slices. Ghana 2023 HS2 exports summed to "
-            "$67.5B against a same-provider UN Comtrade TOTAL of $16.8B (partner=World, partner2=World, "
-            "customs=C00, mode=0). No trustworthy raw Comtrade snapshot is available, so no product "
-            "values or shares are published until a matched re-extraction is validated."
+            "The previously published UN Comtrade HS2 values do not reconcile with the same provider's "
+            "totals: Ghana 2023 HS2 exports summed to $67.5B, while a UN Comtrade TOTAL query with "
+            "matched dimensions (partner World, second partner World, all customs procedures, all "
+            "transport modes) returned $16.8B. The old extractor and loader did not keep or filter those "
+            "breakdown dimensions, which is a suspected cause; the exact cause is unconfirmed because "
+            "no raw Comtrade snapshot survives. No product values or shares are published until a "
+            "matched re-extraction is validated."
         ),
+        "revalidation_audience": "maintainers",
         "revalidation": [
             "Re-extract with extraction/extract/comtrade_extract.py (pins partner2=0, customs=C00, mot=0).",
             "Load with scripts/load_comtrade_silver.py (rejects unpinned slices and duplicate keys).",
@@ -596,9 +632,9 @@ def build(raw_dir: Path, out_dir: Path) -> dict:
     fsi_inconsistent = []
     for (iso3, yr), v in sorted(fsi_vals.items()):
         parts = [v.get(c) for c in D.FSI_COLUMNS if c != "TOTAL"]
-        if v.get("TOTAL") is not None and None not in parts and abs(sum(parts) - v["TOTAL"]) > 0.15:
+        if v.get("TOTAL") is not None and None not in parts and abs(D.fsum(parts) - v["TOTAL"]) > 0.15:
             fsi_inconsistent.append({"country_iso3": iso3, "year": yr, "published_total": v["TOTAL"],
-                                     "indicator_sum": round(sum(parts), 4)})
+                                     "indicator_sum": round(D.fsum(parts), 4)})
     low_cov = [
         {"country_iso3": r["country_iso3"], "year": r["year"], "named_partner_coverage_pct": r["named_partner_coverage_pct"]}
         for r in country_rows

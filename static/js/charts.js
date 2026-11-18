@@ -483,7 +483,34 @@ function yearMarker(years, selectedYear) {
  * Generic multi-series line chart.
  * series: [{label, color, values: (number|null)[], width?, dash?}]
  */
-function renderLines(id, years, series, { title = "", yTitle = "", format = v => fmtPlain(v, 1), selectedYear = null, log = false, yMin } = {}) {
+function breakMarker(years, breakYear, label) {
+  return {
+    id: "compositionBreakMarker",
+    afterDraw(chart) {
+      const idx = years.indexOf(Number(breakYear));
+      if (idx < 0) return;
+      const x = chart.scales.x.getPixelForValue(idx);
+      const { top, bottom } = chart.chartArea;
+      const c = chart.ctx;
+      c.save();
+      c.setLineDash([2, 3]);
+      c.strokeStyle = COLORS.AES;
+      c.lineWidth = 1.4;
+      c.beginPath();
+      c.moveTo(x, top);
+      c.lineTo(x, bottom);
+      c.stroke();
+      c.setLineDash([]);
+      c.fillStyle = COLORS.AES;
+      c.font = "10px " + Chart.defaults.font.family;
+      c.textAlign = "right";
+      c.fillText(label, x - 4, top + 10);
+      c.restore();
+    },
+  };
+}
+
+function renderLines(id, years, series, { title = "", yTitle = "", format = v => fmtPlain(v, 1), selectedYear = null, log = false, yMin, breakYear = null, breakLabel = "membership break" } = {}) {
   const ctx = canvas(id);
   if (!ctx) return;
   const any = series.some(s => s.values.some(v => v != null));
@@ -527,7 +554,10 @@ function renderLines(id, years, series, { title = "", yTitle = "", format = v =>
       })),
     },
     options: opts,
-    plugins: selectedYear != null ? [yearMarker(years, selectedYear)] : [],
+    plugins: [
+      ...(selectedYear != null ? [yearMarker(years, selectedYear)] : []),
+      ...(breakYear != null ? [breakMarker(years, breakYear, `${breakYear} ${breakLabel}`)] : []),
+    ],
   });
 }
 

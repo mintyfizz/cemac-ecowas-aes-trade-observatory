@@ -16,10 +16,13 @@ data refreshed 26 May 2026) was wrong in three ways.
 | `population` was stored as persons × 10⁶. | Every stored per-million rate was 10⁶ too small. Country and map views showed about 0. | Population is stored in persons, and rate = count / population_millions. |
 | Hotspots were grouped by bloc label. | Burkina Faso, Mali and Niger admin1 areas appeared twice (ECOWAS 2022–23, AES 2024) with different windows. | One row per country × admin1 over a fixed window. |
 
-UN Comtrade HS2 product values were also found to be summed across customs,
-mode-of-transport and second-partner breakdown slices. For example, Ghana's 2023
-HS2 exports summed to $67.5B, while the same-provider TOTAL is $16.8B. Those
-values are **quarantined** (see below).
+UN Comtrade HS2 product values do not reconcile with the same provider's totals.
+For example, Ghana's 2023 HS2 exports summed to $67.5B, while a UN Comtrade TOTAL
+query with matched dimensions returned $16.8B. The old extractor and loader
+neither kept nor filtered the customs-procedure, transport-mode and
+second-partner dimensions; this is a **suspected** cause, but it cannot be
+confirmed because no raw Comtrade snapshot survives. The values are
+**quarantined** (see below).
 
 ## Sources and snapshots
 
@@ -59,6 +62,21 @@ year.
 - World minus the named-partner sum is reported as a signed difference. It is
   not called "unallocated trade", because it can be negative.
 
+**Former and successor economies.** Former or combined economies (SUN, YUG,
+CSK, TX126 Belgium-Luxembourg and others) are kept as published.
+`HISTORICAL_SUCCESSORS` in `scripts/observatory_definitions.py` lists their
+successor codes. In 46 reporter-year-flows across 31 reporter-years (1992–1999)
+the source reports positive values for both a former economy and a successor:
+- 29 involve SUN, 9 CSK and 8 YUG.
+- 9 have nearly identical values (within 0.5%), which suggests the same flow may
+  be recorded under both codes.
+
+These cases are flagged in provenance, on country rows
+(`historical_successor_overlap`) and in the partner panel. Named partners are
+not guaranteed to be geographically disjoint in those years. Nothing is removed
+or redistributed, because the source gives no basis to choose. World totals are
+unaffected.
+
 **Concentration (HHI).**
 - HHI = Σ sᵢ² over the full named-partner distribution, with shares normalised by
   the named sum, computed before any top-N cut.
@@ -70,16 +88,26 @@ year.
 **Bloc figures.**
 - Sums run over the members that report; each figure states *n/m* reporting.
 - Openness uses the same members in the numerator and denominator.
+- Exports, imports and trade balance as % of GDP use the same contributors as
+  openness. Each bloc row stores its contributor list for every metric. For
+  example, ECOWAS 1990 has trade for 15 members but GDP for 14, so its balance is
+  2.72% of GDP over those 14; a regression check pins this case.
 - Ratios (debt, growth, inflation, fiscal and current-account balances) are
-  GDP-weighted.
-- Year-on-year changes are shown only when membership is unchanged.
+  GDP-weighted, and each shows its own *n/m*.
+- Year-on-year changes are shown only when membership is unchanged **and** the
+  same countries contribute to that metric in both years.
+- Bloc line charts use each year's membership and mark 2024 as a composition
+  break (ECOWAS goes from 15 to 12 members and the AES cohort starts), whatever
+  the selected year or bloc.
 
 **Conflict (ACLED).**
 - Violent events = Battles, Explosions/Remote violence, Violence against
   civilians and Riots.
-- A country is covered from the first year ACLED returned any event for it.
-  Covered years with no events are 0; earlier years are null. Four country-years
-  are covered with no events: COG 2008, COG 2011, GAB 2007 and GNQ 1999.
+- Coverage **heuristic**, not ACLED's confirmed coverage: a country counts as
+  observed from the first year the saved queries returned any event for it.
+  Within that interval, years whose saved query returned no events are 0;
+  earlier years are null. This makes four country-years 0 (COG 2008, COG 2011,
+  GAB 2007, GNQ 1999).
 - Rate = count / population in millions for the same year.
 - Hotspots cover 2022–2024 combined and are ranked by violent events, then
   fatalities, then name.
@@ -109,6 +137,14 @@ year.
 - 183 country-years where named-partner trade differs from the World total by
   more than 2% (for example Cabo Verde 2015, at 25%). These are visible in the
   coverage chart.
+
+## Canonical arithmetic
+
+Every derived float sum uses `math.fsum`, which is correctly rounded and so
+independent of summation order, platform and Python version. Squares use
+`x * x`, not `x ** 2`: `**` calls the platform's `pow()`, which differed in the
+last bit between Linux and macOS and broke byte-identical rebuilds. The contract
+check requires a fresh rebuild to be byte-identical to the committed files.
 
 ## Reproduce
 

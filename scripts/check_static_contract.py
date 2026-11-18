@@ -91,6 +91,8 @@ def static_checks() -> None:
         check(close(r["total_trade_billions_usd"], None if r["exports_billions_usd"] is None or r["imports_billions_usd"] is None else r["exports_billions_usd"] + r["imports_billions_usd"]), f"{k}: total != exports+imports")
         if r["total_trade_billions_usd"] is not None and r["gdp_current_usd_billions"]:
             check(close(r["trade_openness_pct_gdp"], r["total_trade_billions_usd"] / r["gdp_current_usd_billions"] * 100), f"{k}: openness identity")
+        if r["trade_balance_billions_usd"] is not None and r["gdp_current_usd_billions"]:
+            check(close(r["trade_balance_pct_gdp"], r["trade_balance_billions_usd"] / r["gdp_current_usd_billions"] * 100, rel=1e-12), f"{k}: balance % GDP identity")
         if r["named_total_trade_billions_usd"] is not None and r["total_trade_billions_usd"] is not None:
             check(close(r["world_minus_named_total_trade_billions_usd"], r["total_trade_billions_usd"] - r["named_total_trade_billions_usd"], abs_=1e-9), f"{k}: world-minus-named identity")
         check(r["top_partner_iso3"] is None or roles.get(r["top_partner_iso3"], {}).get("role") == "named_partner", f"{k}: top partner is not a named economy")
@@ -137,12 +139,37 @@ def static_checks() -> None:
         tt = [r["total_trade_billions_usd"] for r in rows if r["total_trade_billions_usd"] is not None]
         check(b["trade_reporting"] == len(tt), f"{k}: trade_reporting count")
         check(close(b["total_trade_billions_usd"], sum(tt) if tt else None, rel=1e-12), f"{k}: bloc total != sum of member World totals")
+        # Contributor lists must match the values they claim and the counts shown.
+        for col_list, cols in (("trade_members", ("total_trade_billions_usd",)), ("gdp_members", ("gdp_current_usd_billions",)),
+                               ("population_members", ("population_millions",))):
+            exp_members = [r["country_iso3"] for r in rows if all(r[c] is not None for c in cols)]
+            check(b[col_list] == exp_members, f"{k}: {col_list} mismatch")
+        check(b["trade_reporting"] == len(b["trade_members"]) and b["gdp_reporting"] == len(b["gdp_members"]), f"{k}: reporting counts != contributor lists")
+        both = [r for r in rows if r["total_trade_billions_usd"] is not None and r["gdp_current_usd_billions"]]
+        check(b["openness_members"] == [r["country_iso3"] for r in both] and b["openness_countries"] == len(both), f"{k}: openness contributors")
+        if both:
+            den = math.fsum(r["gdp_current_usd_billions"] for r in both)
+            for col, src in (("exports_pct_gdp", "exports_billions_usd"), ("imports_pct_gdp", "imports_billions_usd"), ("trade_balance_pct_gdp", "trade_balance_billions_usd")):
+                check(close(b[col], math.fsum(r[src] for r in both) / den * 100, rel=1e-12), f"{k}: {col} not matched to openness contributors")
+            check(close(b["trade_balance_pct_gdp"], b["exports_pct_gdp"] - b["imports_pct_gdp"], rel=1e-9, abs_=1e-9), f"{k}: balance % GDP != exports % GDP - imports % GDP")
         conf = [r for r in rows if r["fatalities"] is not None and r["population_millions"]]
+        check(b["conflict_members"] == [r["country_iso3"] for r in conf], f"{k}: conflict contributors")
         if conf:
             check(close(b["fatalities_per_million"], sum(r["fatalities"] for r in conf) / sum(r["population_millions"] for r in conf)), f"{k}: bloc fatalities rate identity")
         fsi = [r["fsi_total_score"] for r in rows if r["fsi_total_score"] is not None]
         check(b["fsi_reporting"] == len(fsi), f"{k}: bloc FSI count must use same-year values only")
         check(b["bloc_partner_hhi"] is None or 0 < b["bloc_partner_hhi"] <= 1, f"{k}: bloc HHI out of range")
+    # Regression (Nov 2026 review R5): ECOWAS 1990 has trade for 15 members but GDP for 14.
+    # The balance must use the same 14 contributors as exports/imports % of GDP.
+    e90 = next(b for b in bc if b["analytical_bloc_code"] == "ECOWAS" and b["year"] == 1990)
+    check(e90["openness_countries"] == 14 and e90["trade_reporting"] == 15, "ECOWAS 1990 contributor counts changed; review the R5 regression")
+    check(close(e90["trade_balance_pct_gdp"], 2.7212514678007, rel=1e-9), "ECOWAS 1990 matched balance % GDP regression")
+
+    # Historical/successor overlap flags must match provenance.
+    ov = {(o["reporter_iso3"], o["year"]) for o in prov["imts"].get("historical_successor_overlaps", [])}
+    for r in ct:
+        check(r["historical_successor_overlap"] == ((r["country_iso3"], r["year"]) in ov), f"{(r['country_iso3'], r['year'])}: overlap flag mismatch")
+
     bgroups = collections.defaultdict(list)
     for p in bp:
         bgroups[(p["analytical_bloc_code"], p["year"])].append(p)

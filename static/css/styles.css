@@ -1287,3 +1287,50 @@ code {
 #section-exposure > .chart-box {
   min-height: 0;
 }
+
+.econ-details {
+  margin-top: 12px;
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-3);
+  padding: 8px 12px;
+}
+
+.econ-details > summary {
+  cursor: pointer;
+  font-size: 12.5px;
+  color: var(--text-2);
+  padding: 4px 0;
+}
+
+.econ-details > summary:focus-visible {
+  outline: 2px solid var(--warning);
+  outline-offset: 2px;
+}
+
+.econ-details[open] > summary {
+  margin-bottom: 8px;
+}
+
+.econ-details .econ-grid {
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.break-note {
+  margin-top: 2px;
+}
+
+details.tech-details {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+details.tech-details summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+
+details.tech-details ol {
+  margin: 6px 0 0 20px;
+  line-height: 1.5;
+}

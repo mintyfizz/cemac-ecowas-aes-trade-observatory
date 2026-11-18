@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>CEMAC · ECOWAS · AES Trade Observatory</title>
   <meta name="description" content="Trade dependence, exposure and context for 21 Central and West African economies, 1990-2024, from IMF, ACLED and Fund for Peace data." />
-  <link rel="stylesheet" href="css/styles.css?v=20261118-r2" />
+  <link rel="stylesheet" href="css/styles.css?v=20261118-r3" />
   <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js" crossorigin="anonymous"></script>
@@ -57,8 +57,6 @@
           <div class="kpi skeleton" id="kpi-gdp"></div>
           <div class="kpi skeleton" id="kpi-conflict"></div>
         </div>
-        <div class="mini-section-label">Economic profile <span class="muted-inline">IMF WEO · selected year · latest years may be IMF staff estimates</span></div>
-        <div class="econ-grid" id="econ-grid"></div>
       </div>
 
       <div class="card map-card">
@@ -78,6 +76,12 @@
       </div>
     </section>
 
+    <details class="econ-details" id="econ-details">
+      <summary>Economic profile: ten more indicators for <span id="econ-scope">this scope</span>
+        <span class="muted-inline">IMF WEO + IMF IMTS · selected year · latest years may be IMF staff estimates</span></summary>
+      <div class="econ-grid" id="econ-grid"></div>
+    </details>
+
     <div class="section-divider"></div>
 
     <section class="section" id="section-partners" aria-labelledby="partners-label">
@@ -96,6 +100,7 @@
         <div class="chart-box">
           <h3 id="dependence-title">Partner dependence over time</h3>
           <p class="sub">Top partner and top-3 partners as % of World total trade</p>
+          <p class="note break-note" id="dependence-break"></p>
           <div id="dependence-summary" class="partner-diagnostics"></div>
           <canvas id="dependence-chart"></canvas>
         </div>
@@ -104,6 +109,7 @@
         <div class="chart-box">
           <h3 id="hhi-title">Partner concentration (<abbr title="Herfindahl-Hirschman index: sum of squared partner shares. 1 = a single partner; values near 0 = trade spread across many partners">HHI</abbr>)</h3>
           <p class="sub" id="hhi-sub">Computed on all named partners; conditional on how much of World trade is attributed to named partners</p>
+          <p class="note break-note">Dashed marker at 2024: bloc composition break (ECOWAS 15 to 12 members; AES cohort starts).</p>
           <canvas id="hhi-chart"></canvas>
         </div>
         <div class="chart-box">
@@ -121,6 +127,7 @@
         <div class="chart-box">
           <h3 id="openness-title">Trade openness</h3>
           <p class="sub">Goods exports + imports as % of GDP</p>
+          <p class="note break-note">Bloc lines use each year's membership. 2024 is a composition break: ECOWAS drops from 15 to 12 members and AES (Burkina Faso, Mali, Niger) starts as an analytical cohort.</p>
           <canvas id="openness-chart"></canvas>
         </div>
         <div class="chart-box">
@@ -140,9 +147,9 @@
     <section class="section" id="section-products" aria-labelledby="products-label">
       <div class="section-label" id="products-label">Product structure</div>
       <div class="chart-box quarantine" id="products-box">
-        <h3>UN Comtrade product data: under revalidation</h3>
+        <h3>Product structure is not shown while the data is revalidated</h3>
         <p id="products-reason"></p>
-        <ol id="products-steps"></ol>
+        <p class="note">The technical revalidation steps are listed under Sources &amp; methods.</p>
       </div>
     </section>
 
@@ -177,7 +184,7 @@
 
   <div class="toast" id="toast" role="alert" aria-live="assertive"></div>
 
-  <script src="js/charts.js?v=20261118-r2"></script>
-  <script src="js/app_static.js?v=20261118-r2"></script>
+  <script src="js/charts.js?v=20261118-r3"></script>
+  <script src="js/app_static.js?v=20261118-r3"></script>
 </body>
 </html>

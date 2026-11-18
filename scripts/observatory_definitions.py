@@ -9,6 +9,7 @@ same rules. When a rule changes here, change the matching notebook cell too
 from __future__ import annotations
 
 import csv
+import math
 from datetime import date
 from pathlib import Path
 
@@ -145,6 +146,25 @@ FSI_PILLARS = {
 
 TOP_N_PARTNERS = 15
 
+# Former or combined economies and the successor codes that also appear in IMF
+# IMTS. Used only to FLAG reporter-year-flows where both report positive values
+# (the named-partner universe may then not be geographically disjoint). Values
+# are never removed or redistributed.
+HISTORICAL_SUCCESSORS = {
+    "SUN": ("RUS", "UKR", "BLR", "MDA", "EST", "LVA", "LTU", "GEO", "ARM", "AZE", "KAZ", "KGZ", "TJK", "TKM", "UZB"),
+    "YUG": ("SRB", "MNE", "HRV", "SVN", "BIH", "MKD", "KOS", "SCG"),
+    "SCG": ("SRB", "MNE", "KOS"),
+    "CSK": ("CZE", "SVK"),
+    "DDR": ("DEU",),
+    "ANT": ("CUW", "SXM", "BES", "CWX"),
+    "CWX": ("CUW", "SXM"),
+    "YAR": ("YEM",),
+    "YMD": ("YEM",),
+    "VDR": ("VNM",),
+    "TX126": ("BEL", "LUX"),
+    "TX554": ("MYS",),
+}
+
 
 def per_million(count, population_millions):
     """Rate per million residents. Nulls propagate; never coerced to zero."""
@@ -153,10 +173,21 @@ def per_million(count, population_millions):
     return count / population_millions
 
 
+def fsum(values) -> float:
+    """Correctly rounded float sum (math.fsum).
+
+    Canonical arithmetic for every derived float: math.fsum is exactly rounded,
+    so results do not depend on summation order, Python version or platform.
+    Squares use x * x (IEEE exact rounding) rather than ** 2, which calls the
+    platform libm pow() and differed in the last bit between Linux and macOS.
+    """
+    return math.fsum(values)
+
+
 def hhi(values) -> float | None:
     """Herfindahl-Hirschman index (0-1) over a distribution of non-negative values."""
     vals = [v for v in values if v is not None and v > 0]
-    total = sum(vals)
+    total = fsum(vals)
     if total <= 0:
         return None
-    return sum((v / total) ** 2 for v in vals)
+    return fsum((v / total) * (v / total) for v in vals)

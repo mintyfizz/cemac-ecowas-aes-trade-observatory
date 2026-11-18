@@ -73,7 +73,26 @@ def mutate_inflated_total(data):
     r["total_trade_billions_usd"] = r["exports_billions_usd"] + r["imports_billions_usd"]
 
 
+def mutate_partial_gdp_balance(data):
+    for b in data["bloc_comparison.json"]:
+        if b["analytical_bloc_code"] == "ECOWAS" and b["year"] == 1990:
+            # Old UI bug: all-member balance divided by partial GDP.
+            b["trade_balance_pct_gdp"] = b["trade_balance_billions_usd"] / b["gdp_current_usd_billions"] * 100
+            return
+
+
+def mutate_contributor_count(data):
+    # Claim full GDP coverage for ECOWAS 1990, where only 14 of 15 members report GDP.
+    for b in data["bloc_comparison.json"]:
+        if b["analytical_bloc_code"] == "ECOWAS" and b["year"] == 1990:
+            b["gdp_reporting"] = b["member_count"]
+            b["gdp_members"] = b["members"]
+            return
+
+
 MUTATIONS = [
+    mutate_partial_gdp_balance,
+    mutate_contributor_count,
     mutate_population,
     mutate_rate_scale,
     mutate_aggregate_partner,
